@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package inventory.v1;
+option go_package = "github.com/YanMak/ecommerce/v2/gen/inventory/v1;invpb";
+
+import "google/protobuf/timestamp.proto";
+
+// Агрегированная модель остатков для item_id.
+// locations — деталь по складам (если не нужны — можно не заполнять).
+message Stock {
+  int64 item_id = 1;
+  int64 available = 2; // суммарный доступный остаток по всем локациям
+  repeated StockPerLocation locations = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message StockPerLocation {
+  string location_code = 1; // например "MSK-01"
+  int64 available = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}
+
+message GetStockRequest {
+  int64 item_id = 1;
+  // Если указать location_code — вернём только её (и пересчёт available).
+  string location_code = 2;
+}
+
+message GetStockResponse {
+  Stock stock = 1;
+}
+
+message BatchGetStockRequest {
+  repeated int64 item_ids = 1;      // до N штук за раз
+  string location_code = 2;         // опционально фильтровать по локации
+}
+
+message BatchGetStockResponse {
+  repeated Stock stocks = 1;        // порядок тот же, что и в запросе
+}
+
+// Базовые коды ошибок (как договорённость):
+// INVALID_ARGUMENT — пустой item_id, слишком много ids в батче.
+// NOT_FOUND — для GetStock, если item_id не существует в Inventory.
+// INTERNAL — любые неожиданные ошибки в БД/репозитории.
+// UNAVAILABLE/DEADLINE_EXCEEDED — сетевые/таймауты (уже на уровне клиента).
+service StockService {
+  rpc GetStock(GetStockRequest) returns (GetStockResponse);
+  rpc BatchGetStock(BatchGetStockRequest) returns (BatchGetStockResponse);
+}

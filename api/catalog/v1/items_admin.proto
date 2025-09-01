@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package catalog.v1;
+option go_package = "github.com/YanMak/ecommerce/v2/gen/catalog/v1;catalogpb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+// Модель товара, которой владеет Catalog.
+message Item {
+  int64 id = 1;
+  string slug = 2;                 // уникальный "человекочитаемый" ключ
+  string name = 3;
+  string description = 4;
+  int64 price_cents = 5;
+  repeated string tags = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// --- Create ---
+
+message CreateItemRequest {
+  string slug = 1;                 // например, ^[a-z0-9-]{3,64}$
+  string name = 2;                 // 1..256
+  string description = 3;          // 0..10k
+  int64 price_cents = 4;           // >= 0
+  repeated string tags = 5;        // 0..50 штук, каждая 1..64
+  // Идемпотентность: передавать ключ в gRPC metadata: "idempotency-key: <uuid>"
+}
+
+message CreateItemResponse { Item item = 1; }
+
+// --- Patch (частичное обновление) ---
+
+message ItemPatch {
+  string name = 1;
+  string description = 2;
+  int64 price_cents = 3;
+  repeated string tags = 4;
+}
+
+message PatchItemRequest {
+  int64 id = 1;                                   // целевой item
+  ItemPatch patch = 2;                            // новые значения
+  google.protobuf.FieldMask update_mask = 3;      // какие поля менять: "name,price_cents,tags"
+  google.protobuf.Timestamp prev_updated_at = 4;  // оптимистическая блокировка (если не совпало — конфликт)
+}
+
+message PatchItemResponse { Item item = 1; }
+
+// Коды ошибок (конвенция для маппинга в сервере):
+// INVALID_ARGUMENT — валидация (пустые/слишком длинные поля, неизвестные пути в FieldMask).
+// ALREADY_EXISTS — slug занят при Create.
+// NOT_FOUND — нет такого id при Patch.
+// ABORTED — конфликт оптимистической блокировки (prev_updated_at != current).
+// INTERNAL — прочие неожиданные ошибки.
+// UNAVAILABLE/DEADLINE_EXCEEDED — сетевые/таймауты (на клиенте).
+
+service ItemsAdminService {
+  rpc CreateItem(CreateItemRequest) returns (CreateItemResponse);
+  rpc PatchItem(PatchItemRequest) returns (PatchItemResponse);
+}

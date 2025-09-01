@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package inventory.v1;
+option go_package = "github.com/YanMak/ecommerce/v2/gen/inventory/v1;invpb";
+
+import "google/protobuf/timestamp.proto";
+import "inventory/v1/stock.proto"; // <-- импортируем Stock и StockPerLocation
+
+// Причины изменения (аудит/аналитика).
+enum StockChangeReason {
+  STOCK_CHANGE_REASON_UNSPECIFIED = 0;
+  STOCK_CHANGE_RECEIPT = 1;      // приход/поставка
+  STOCK_CHANGE_CORRECTION = 2;   // инвентаризация/коррекция
+  STOCK_CHANGE_RETURN = 3;       // клиентский возврат
+  STOCK_CHANGE_MANUAL = 4;       // ручная операция
+}
+
+// --- Adjust: инкремент/декремент по конкретной локации ---
+message AdjustStockRequest {
+  int64 item_id = 1;
+  string location_code = 2;
+  int64 delta = 3;                          // может быть <0 или >0, != 0
+  StockChangeReason reason = 4;
+  string reference = 5;
+  bool allow_negative = 6;                  // по умолчанию false
+  google.protobuf.Timestamp prev_updated_at = 7; // оптимистическая блокировка по локации
+  // Идемпотентность: metadata "idempotency-key: <uuid>"
+}
+message AdjustStockResponse {
+  Stock stock = 1; // используем Stock из stock.proto
+}
+
+// --- Set: задать точное значение по локации ---
+message SetStockRequest {
+  int64 item_id = 1;
+  string location_code = 2;
+  int64 new_available = 3;                  // >= 0 (если нужно — разрешим <0 через флаг)
+  StockChangeReason reason = 4;
+  string reference = 5;
+  google.protobuf.Timestamp prev_updated_at = 6;
+  // Идемпотентность: metadata "idempotency-key: <uuid>"
+}
+message SetStockResponse {
+  Stock stock = 1; // используем Stock из stock.proto
+}
+
+// --- Batch Adjust ---
+message BatchAdjustLine {
+  int64 item_id = 1;
+  string location_code = 2;
+  int64 delta = 3;
+  StockChangeReason reason = 4;
+  string reference = 5;
+  bool allow_negative = 6;
+  google.protobuf.Timestamp prev_updated_at = 7; // можно не заполнять
+}
+message BatchAdjustStockRequest {
+  repeated BatchAdjustLine lines = 1; // сервер ограничит размер, напр., до 500
+  // Идемпотентность на весь батч — через metadata "idempotency-key"
+}
+message BatchAdjustStockResponse {
+  repeated Stock stocks = 1; // используем Stock из stock.proto
+}
+
+// Ошибки (конвенция):
+// INVALID_ARGUMENT, NOT_FOUND, ABORTED, FAILED_PRECONDITION, RESOURCE_EXHAUSTED, INTERNAL
+service StockAdminService {
+  rpc AdjustStock(AdjustStockRequest) returns (AdjustStockResponse);
+  rpc SetStock(SetStockRequest) returns (SetStockResponse);
+  rpc BatchAdjustStock(BatchAdjustStockRequest) returns (BatchAdjustStockResponse);
+}

@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package catalog.v1;
+option go_package = "github.com/YanMak/ecommerce/v2/gen/catalog/v1;catalogpb";
+
+import "google/protobuf/timestamp.proto";
+import "catalog/v1/items_admin.proto"; // <-- берём Item отсюда
+
+// Короткая модель для листинга (без description).
+message ItemSummary {
+  int64 id = 1;
+  string slug = 2;
+  string name = 3;
+  int64 price_cents = 4;
+  repeated string tags = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// Лёгкая информация про остаток, которую Catalog может приклеить
+message StockInfo {
+  int64 available = 1;
+  string location_code = 2;
+}
+
+// ---- СОРТИРОВКА ----
+enum SortField {
+  SORT_FIELD_UNSPECIFIED = 0;
+  SORT_CREATED_AT = 1;
+  SORT_UPDATED_AT = 2;
+  SORT_PRICE_CENTS = 3;
+  SORT_NAME = 4;
+}
+enum SortOrder {
+  SORT_ORDER_UNSPECIFIED = 0;
+  SORT_ASC = 1;
+  SORT_DESC = 2;
+}
+message Sort {
+  SortField field = 1; // default: SORT_CREATED_AT
+  SortOrder order = 2; // default: SORT_DESC
+}
+
+// ---- GET ----
+message GetItemRequest {
+  oneof key {
+    int64 id = 1;
+    string slug = 2;
+  }
+  bool include_stock = 3;
+  string location_code = 4;
+}
+message GetItemResponse {
+  Item item = 1;       // <-- используем Item из items_admin.proto
+  StockInfo stock = 2;
+}
+
+// ---- LIST (фильтры + пагинация) ----
+message ListItemsRequest {
+  string q = 1;
+  repeated string tags = 2;
+  int64 price_min = 3;
+  int64 price_max = 4;
+  google.protobuf.Timestamp updated_since = 5;
+
+  Sort sort = 6;
+  int32 limit = 7;
+
+  oneof paging {
+    string cursor = 8;
+    int32 offset = 9;
+  }
+
+  bool include_stock = 10;
+  string location_code = 11;
+}
+
+message ItemListRow {
+  ItemSummary item = 1;
+  StockInfo stock = 2;
+}
+
+message ListItemsResponse {
+  repeated ItemListRow items = 1;
+  string next_cursor = 2;
+  int32 offset = 3;
+  int64 total = 4;
+  int32 returned = 5;
+  bool has_more = 6;
+}
+
+service CatalogReadService {
+  rpc GetItem(GetItemRequest) returns (GetItemResponse);
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+}
