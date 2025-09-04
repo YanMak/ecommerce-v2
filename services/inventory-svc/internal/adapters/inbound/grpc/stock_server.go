@@ -122,7 +122,7 @@ func toPBStock(s StockDTO, filterLocation string) *invpb.Stock {
 	pb := &invpb.Stock{
 		ItemId:    s.ItemID,
 		Available: s.Available,
-		UpdatedAt: toProtoTs(s.UpdatedAt),
+		UpdatedAt: toProtoTsSec(s.UpdatedAt),
 	}
 
 	// Если попросили конкретную локацию — отфильтруем и пересчитаем available.
@@ -157,8 +157,16 @@ func toPBLocation(l StockPerLocationDTO) *invpb.StockPerLocation {
 	return &invpb.StockPerLocation{
 		LocationCode: l.LocationCode,
 		Available:    l.Available,
-		UpdatedAt:    toProtoTs(l.UpdatedAt),
+		UpdatedAt:    toProtoTsSec(l.UpdatedAt),
 	}
+}
+
+// новый хелпер: из unix seconds -> protobuf Timestamp
+func toProtoTsSec(sec int64) *timestamppb.Timestamp {
+	if sec <= 0 {
+		return nil // нет значения — оставим пусто
+	}
+	return timestamppb.New(time.Unix(sec, 0).UTC())
 }
 
 func toProtoTs(t time.Time) *timestamppb.Timestamp {
