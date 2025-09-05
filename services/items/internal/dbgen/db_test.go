@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/sqlchello/internal/dbgen"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

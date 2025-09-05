@@ -6,12 +6,12 @@ import (
 	"log"
 	"os"
 
-	"example.com/sqlchello/internal/adapters/outbound/postgres"
-	repoports "example.com/sqlchello/internal/core/ports/repo"
-	"example.com/sqlchello/internal/core/usecase/paging"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/adapters/outbound/postgres"
+	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
 
-	"example.com/sqlchello/internal/core/usecase"
-	ptr "example.com/sqlchello/internal/x"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase"
+	ptr "github.com/YanMak/ecommerce/v2/services/items/internal/x"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

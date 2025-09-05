@@ -4,8 +4,8 @@ package postgres
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	repoports "example.com/sqlchello/internal/core/ports/repo"
-	"example.com/sqlchello/internal/dbgen"
+	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
 )
 
 // Компилятор проверит, что Repo реализует ItemRepository.

@@ -3,9 +3,9 @@ package postgres
 import (
 	"context"
 
-	"example.com/sqlchello/internal/core/domain"
-	repoports "example.com/sqlchello/internal/core/ports/repo"
-	"example.com/sqlchello/internal/dbgen"
+	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 	// "context"
 	// "example.com/sqlchello/internal/core/domain"
 	// ports "example.com/sqlchello/internal/core/ports"

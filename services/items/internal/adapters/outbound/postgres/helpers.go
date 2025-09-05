@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

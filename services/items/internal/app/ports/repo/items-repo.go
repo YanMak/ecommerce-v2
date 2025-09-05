@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"example.com/sqlchello/internal/core/domain"
-	"example.com/sqlchello/internal/core/usecase/paging"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 )
 
 type ItemPatch struct {
