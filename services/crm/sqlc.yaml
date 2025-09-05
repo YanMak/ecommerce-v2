@@ -1,29 +1,22 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    schema: 
-      - "db/schema.sql"
-    queries: 
-      - "db/queries.sql"
+    schema:
+      - "services/crm/db/schema.sql"
+    queries:
+      - "services/crm/db/queries"
     gen:
       go:
         package: "db"
-        out: "internal/db"
+        out: "services/crm/internal/db"
         sql_package: "pgx/v5"
         emit_json_tags: true
         emit_db_tags: true
-        emit_prepared_queries: false
         emit_interface: false
+        emit_prepared_queries: false
         overrides:
-          - db_type: "int2[]"
-            go_type:
-              type: "[]int16"
-          - db_type: "int4[]"
-            go_type:
-              type: "[]int32"
+          # пример: массивы int в Go как []int32
           - column: "certificates.observers"
-            go_type:
-              type: "[]int32"
+            go_type: { type: "[]int32" }
           - column: "certificates.contact_ids"
-            go_type:
-              type: "[]int32"
+            go_type: { type: "[]int32" }
