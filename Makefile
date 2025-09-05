@@ -1,55 +1,77 @@
-# ===== Common =====
-.PHONY: help create up down redo force version sqlc schema dump env
+# ---- migrate config ----
+# Путь к migrate CLI. Если не найден — бросим ошибку.
+MIGRATE ?= $(shell command -v migrate 2>/dev/null)
+MIGRATE_CMD = $(if $(MIGRATE),$(MIGRATE),$(error "migrate not found; install: go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest"))
 
-# какой сервис дергаем (по умолчанию crm)
-SERVICE ?= crm
+# Базовый PG URL без имени БД, чтобы удобнее перегружать окружением.
+PG_URL ?= postgres://postgres:postgres@localhost:5432
 
-# корневая папка сервиса
-SVC_DIR  := services/$(SERVICE)
+# Подключения для сервисов (можешь переопределять через env).
+CRM_DB_URL   ?= $(PG_URL)/crm?sslmode=disable
+ITEMS_DB_URL ?= $(PG_URL)/items?sslmode=disable
 
-# миграции/схема/queries
-DB_DIR    := $(SVC_DIR)/db
-MIGR_DIR  := $(DB_DIR)/migrations
-SCHEMA    := $(DB_DIR)/schema.sql
+# Папки с миграциями (проверь, что они существуют).
+CRM_MIG_DIR   ?= services/crm/db/migrations
+ITEMS_MIG_DIR ?= services/items/db/migrations
 
-# DSN базы можно переопределить через окружение
-# пример: DB_URL=postgres://user:pass@localhost:5432/rosk?sslmode=disable
-DB_URL ?= postgres://postgres:postgres@localhost:5432/$(SERVICE)?sslmode=disable
+.PHONY: migrate-up migrate-down migrate-version \
+        migrate-crm-up migrate-crm-down migrate-crm-force migrate-crm-version migrate-crm-create \
+        migrate-items-up migrate-items-down migrate-items-force migrate-items-version migrate-items-create
 
-# ===== Migrate (golang-migrate) =====
-create:
-	@test $(name)
-	migrate create -ext sql -dir $(MIGR_DIR) -seq $(name)
+## ----- CRM -----
+migrate-crm-up:
+	$(MIGRATE_CMD) -path $(CRM_MIG_DIR) -database "$(CRM_DB_URL)" up
 
-up:
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" up
+# N шагов вниз: make migrate-crm-down n=1 (по умолчанию 1)
+migrate-crm-down:
+	$(MIGRATE_CMD) -path $(CRM_MIG_DIR) -database "$(CRM_DB_URL)" down $(if $(n),$(n),1)
 
-down:
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" down 1
+# Зафиксировать версию при кривом состоянии: make migrate-crm-force v=3
+migrate-crm-force:
+	@[ -n "$(v)" ] || (echo "Usage: make migrate-crm-force v=<version>"; exit 1)
+	$(MIGRATE_CMD) -path $(CRM_MIG_DIR) -database "$(CRM_DB_URL)" force $(v)
 
-redo:
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" down 1
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" up 1
+migrate-crm-version:
+	-$(MIGRATE_CMD) -path $(CRM_MIG_DIR) -database "$(CRM_DB_URL)" version || true
 
-force:
-	@test $(version)
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" force $(version)
+# Создать новый файл миграции: make migrate-crm-create name=init_tables
+migrate-crm-create:
+	@[ -n "$(name)" ] || (echo "Usage: make migrate-crm-create name=<snake_case>"; exit 1)
+	mkdir -p $(CRM_MIG_DIR)
+	$(MIGRATE_CMD) create -ext sql -dir $(CRM_MIG_DIR) -seq $(name)
 
-version:
-	migrate -path $(MIGR_DIR) -database "$(DB_URL)" version
+## ----- ITEMS -----
+migrate-items-up:
+	$(MIGRATE_CMD) -path $(ITEMS_MIG_DIR) -database "$(ITEMS_DB_URL)" up
 
-# ===== sqlc =====
-sqlc:
-	cd $(SVC_DIR) && sqlc generate
+migrate-items-down:
+	$(MIGRATE_CMD) -path $(ITEMS_MIG_DIR) -database "$(ITEMS_DB_URL)" down $(if $(n),$(n),1)
 
-# ===== schema.sql из живой БД (удобно держать sqlc на актуальной схеме) =====
-# Требуется установленный pg_dump
-schema:
-	pg_dump "$(DB_URL)" --schema-only --no-owner --no-privileges > "$(SCHEMA)"
+migrate-items-force:
+	@[ -n "$(v)" ] || (echo "Usage: make migrate-items-force v=<version>"; exit 1)
+	$(MIGRATE_CMD) -path $(ITEMS_MIG_DIR) -database "$(ITEMS_DB_URL)" force $(v)
 
-# ===== Вспомогалки =====
-help:
-	@echo "Usage: make [target] SERVICE=crm DB_URL=postgres://..."
+migrate-items-version:
+	-$(MIGRATE_CMD) -path $(ITEMS_MIG_DIR) -database "$(ITEMS_DB_URL)" version || true
+
+migrate-items-create:
+	@[ -n "$(name)" ] || (echo "Usage: make migrate-items-create name=<snake_case>"; exit 1)
+	mkdir -p $(ITEMS_MIG_DIR)
+	$(MIGRATE_CMD) create -ext sql -dir $(ITEMS_MIG_DIR) -seq $(name)
+
+## ----- Convenience -----
+# Запустить все апы для обоих сервисов
+migrate-up: migrate-crm-up migrate-items-up
+
+# Сначала откатываем items, затем crm (часто безопаснее)
+migrate-down:
+	$(MAKE) migrate-items-down n=$(if $(n),$(n),1)
+	$(MAKE) migrate-crm-down n=$(if $(n),$(n),1)
+
+# Показать версии обоих
+migrate-version:
+	@echo "CRM version:";   $(MAKE) -s migrate-crm-version
+	@echo "ITEMS version:"; $(MAKE) -s migrate-items-version
 	@echo
 	@echo "Migrate:"
 	@echo "  make create name=<snake_case>   # создать пустую миграцию"
