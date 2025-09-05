@@ -2,13 +2,13 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema:
-      - "services/crm/db/schema.sql"
+      - "db/schema.sql"
     queries:
-      - "services/crm/db/queries"
+      - "db/queries"
     gen:
       go:
-        package: "db"
-        out: "services/crm/internal/db"
+        package: "dbgen"
+        out: "internal/dbgen"
         sql_package: "pgx/v5"
         emit_json_tags: true
         emit_db_tags: true
