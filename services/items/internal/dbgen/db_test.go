@@ -18,7 +18,9 @@ func TestMain(m *testing.M) {
 func TestCreateAndGet(t *testing.T) {
 
 	//ctx, tx := beginTx(t)
-	pool := pgtest.PoolFromEnv(t, "postgres://postgres:postgres@localhost:5432/items?sslmode=disable")
+	t.Setenv("ITEMS_DB_URL", "postgres://postgres:postgres@localhost:5432/items?sslmode=disable")
+
+	pool := pgtest.PoolFromEnv(t, "ITEMS_DB_URL")
 
 	ctx, tx, cleanup := pgtest.BeginTx(t, pool)
 	q := dbgen.New(tx)
