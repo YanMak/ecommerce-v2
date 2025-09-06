@@ -1,6 +1,7 @@
 package dbgen_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -41,4 +42,35 @@ func TestCreateAndGet(t *testing.T) {
 	}
 
 	cleanup()
+}
+
+func TestCreateAndGet_WithRollback(t *testing.T) {
+
+	//ctx, tx := beginTx(t)
+	t.Setenv("ITEMS_DB_URL", "postgres://postgres:postgres@localhost:5432/items?sslmode=disable")
+
+	pool := pgtest.PoolFromEnv(t, "ITEMS_DB_URL")
+
+	pgtest.WithRollback(t, pool, func(ctx context.Context, tx pgtest.Tx) {
+
+		q := dbgen.New(tx)
+
+		created, err := q.CreateItem(ctx, dbgen.CreateItemParams{
+			//Slug: "t-1",
+			Slug: "demo-1757101974492663918",
+			Name: "Test", Description: "from test", PriceCents: 100, Tags: []string{},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+
+		got, err := q.GetItemByID(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		if got.ID != created.ID {
+			t.Fatalf("mismatch")
+		}
+
+	})
 }
