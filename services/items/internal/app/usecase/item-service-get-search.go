@@ -23,16 +23,23 @@ func (s *ItemService) Search(ctx context.Context, name *string, minPrice *int64,
 	return s.repo.Search(ctx, name, minPrice, maxPrice, limit, offset)
 }
 
-func (s *ItemService) SearchOffset(ctx context.Context, f repoports.SearchFilter, p offset.OffsetParams) (offset.OffsetResult[domain.Item], error) {
+func (s *ItemService) SearchOffset(ctx context.Context, f repoports.SearchFilter, p offset.OffsetParams) (ItemsPage, error) {
 
-	items, total, hasNext, err := s.repo.SearchOffset(ctx, f, p)
+	norm := offset.NormalizeOffset(
+		p,
+		offset.OffsetOpts{DefaultPerPage: 20, MaxPerPage: 200}, // подставь свои числа
+	)
+
+	items, total, hasNext, err := s.repo.SearchOffset(ctx, f, norm.Limit, norm.Offset)
 	if err != nil {
-		return offset.OffsetResult[domain.Item]{
-			Items: nil, Total: 0, Page: p.Page, PerPage: p.PerPage, HasNext: false,
-		}, err
+		return ItemsPage{}, err
 	}
-	return offset.OffsetResult[domain.Item]{
-		Items: items, Total: total, Page: p.Page, PerPage: p.PerPage, HasNext: hasNext,
+	return ItemsPage{
+		Items:   items,
+		Total:   total,
+		Page:    norm.Page,
+		PerPage: norm.PerPage,
+		HasNext: hasNext,
 	}, nil
 }
 
