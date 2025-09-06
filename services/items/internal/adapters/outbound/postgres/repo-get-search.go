@@ -7,7 +7,7 @@ import (
 	"time"
 
 	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
-	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
+	keyset "github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -127,14 +127,14 @@ func (r *Repo) CreateAndSearchWithRetry(
 	return []domain.Item{}, nil
 }
 
-func (r *Repo) SearchOffset(ctx context.Context, f repoports.SearchFilter, p paging.OffsetPage) ([]domain.Item, int64, bool, error) {
+func (r *Repo) SearchOffset(ctx context.Context, f repoports.SearchFilter, limit, offset int32) ([]domain.Item, int64, bool, error) {
 	// 1) данные
 	rows, err := r.q(r.pool).SearchItems(ctx, dbgen.SearchItemsParams{
 		Name:     OptText(f.Name),
 		MinPrice: OptInt8(f.MinPrice),
 		MaxPrice: OptInt8(f.MaxPrice),
-		Limit:    p.PerPage,
-		Offset:   (p.Page - 1) * p.PerPage,
+		Limit:    limit,
+		Offset:   offset,
 	})
 	if err != nil {
 		return []domain.Item{}, 0, false, err
@@ -155,12 +155,12 @@ func (r *Repo) SearchOffset(ctx context.Context, f repoports.SearchFilter, p pag
 		items[i] = fromDB(row)
 	}
 
-	hasNext := int64(p.Page)*int64(p.PerPage) < total
+	hasNext := int64(offset)+int64(limit) < total
 
 	return items, total, hasNext, nil
 }
 
-func (r *Repo) SearchKeysetNext(ctx context.Context, f repoports.SearchFilter, limit int32, cur *paging.Cursor) ([]domain.Item, *paging.Cursor, bool, error) {
+func (r *Repo) SearchKeysetNext(ctx context.Context, f repoports.SearchFilter, limit int32, cur *keyset.Cursor) ([]domain.Item, *keyset.Cursor, bool, error) {
 	// берём limit+1, чтобы понять hasNext
 	lim := limit + 1
 
@@ -193,16 +193,16 @@ func (r *Repo) SearchKeysetNext(ctx context.Context, f repoports.SearchFilter, l
 	}
 
 	// cursor на следующую страницу — это последняя запись в этой выдаче
-	var next *paging.Cursor
+	var next *keyset.Cursor
 	if hasNext && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		next = &paging.Cursor{CreatedAt: last.CreatedAt.Time, ID: last.ID}
+		next = &keyset.Cursor{CreatedAt: last.CreatedAt.Time, ID: last.ID}
 	}
 
 	return items, next, hasNext, nil
 }
 
-func (r *Repo) SearchKeysetPrev(ctx context.Context, f repoports.SearchFilter, limit int32, cur *paging.Cursor) ([]domain.Item, *paging.Cursor, bool, error) {
+func (r *Repo) SearchKeysetPrev(ctx context.Context, f repoports.SearchFilter, limit int32, cur *keyset.Cursor) ([]domain.Item, *keyset.Cursor, bool, error) {
 	// берём limit+1, чтобы понять hasNext
 	lim := limit + 1
 
@@ -235,10 +235,10 @@ func (r *Repo) SearchKeysetPrev(ctx context.Context, f repoports.SearchFilter, l
 	}
 
 	// cursor на следующую страницу — это последняя запись в этой выдаче
-	var next *paging.Cursor
+	var next *keyset.Cursor
 	if hasNext && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		next = &paging.Cursor{CreatedAt: last.CreatedAt.Time, ID: last.ID}
+		next = &keyset.Cursor{CreatedAt: last.CreatedAt.Time, ID: last.ID}
 	}
 
 	return items, next, hasNext, nil

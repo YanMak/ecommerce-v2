@@ -7,13 +7,14 @@ import (
 	"os"
 	"time"
 
+	offset "github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/adapters/outbound/postgres"
 	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
-	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
+	keyset "github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 
+	ptr "github.com/YanMak/ecommerce/v2/pkg/ptr"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase"
-	ptr "github.com/YanMak/ecommerce/v2/services/items/internal/x"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -138,7 +139,7 @@ func main() {
 			//Name:     ptr.To("emo"),
 			MinPrice: ptr.To(priceFrom),
 			MaxPrice: ptr.To(priceTo),
-		}, paging.OffsetPage{Page: page, PerPage: perPage})
+		}, offset.OffsetParams{Page: page, PerPage: perPage})
 	fmt.Printf("offsetResult page %d: %+v\n", page, offsetResult)
 	for currPage := page + 1; currPage*perPage < int32(offsetResult.Total); currPage++ {
 
@@ -147,7 +148,7 @@ func main() {
 				//Name:     ptr.To("emo"),
 				MinPrice: ptr.To(priceFrom),
 				MaxPrice: ptr.To(priceTo),
-			}, paging.OffsetPage{Page: currPage, PerPage: perPage})
+			}, offset.OffsetParams{Page: currPage, PerPage: perPage})
 		fmt.Printf("offsetResult page %d: %+v, err=%s\n\n\n", currPage, offsetResult, err)
 	}
 
@@ -161,7 +162,7 @@ func main() {
 		}, 5, nil)
 	fmt.Printf("front direction keysetResult, page %d: %+v\n cursor=%+v err=%s \n\n\n", currPageFront, keysetResult, keysetResult.Cursor, err)
 
-	var next *paging.Cursor = keysetResult.Cursor
+	var next *keyset.Cursor = keysetResult.Cursor
 	for keysetResult.HasNext {
 		// FRONT DIRECTION
 		currPageFront++

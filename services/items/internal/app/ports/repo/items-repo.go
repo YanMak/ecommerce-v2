@@ -46,7 +46,7 @@ type ItemRepository interface {
 		name *string, minPrice *int64, maxPrice *int64, limit, offset int32,
 	) ([]domain.Item, error)
 
-	SearchOffset(ctx context.Context, f SearchFilter, p paging.OffsetPage) ([]domain.Item, int64, bool, error)
+	SearchOffset(ctx context.Context, f SearchFilter, limit, offset int32) ([]domain.Item, int64, bool, error)
 
 	SearchKeysetNext(ctx context.Context, f SearchFilter, limit int32, cur *paging.Cursor) ([]domain.Item, *paging.Cursor, bool, error)
 

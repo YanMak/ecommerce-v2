@@ -12,8 +12,8 @@ import (
 	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 
+	ptr "github.com/YanMak/ecommerce/v2/pkg/ptr"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/dbgen"
-	ptr "github.com/YanMak/ecommerce/v2/services/items/internal/x"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
