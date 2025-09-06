@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 
 	dsn := os.Getenv("DATABASE_URL_TEST")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/shop?sslmode=disable"
+		dsn = "postgres://postgres:postgres@localhost:5432/items?sslmode=disable"
 	}
 	var err error
 	pool, err = pgxpool.New(ctx, dsn)

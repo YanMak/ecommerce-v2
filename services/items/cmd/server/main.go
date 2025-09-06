@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/YanMak/ecommerce/v2/services/items/internal/adapters/outbound/postgres"
 	repoports "github.com/YanMak/ecommerce/v2/services/items/internal/app/ports/repo"
 	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase/paging"
+	"github.com/YanMak/ecommerce/v2/services/items/internal/domain"
 
 	"github.com/YanMak/ecommerce/v2/services/items/internal/app/usecase"
 	ptr "github.com/YanMak/ecommerce/v2/services/items/internal/x"
@@ -16,7 +18,7 @@ import (
 )
 
 func main() {
-	dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/shop?sslmode=disable")
+	dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/items?sslmode=disable")
 
 	ctx := context.Background()
 
@@ -78,21 +80,21 @@ func main() {
 	// }
 	// log.Printf("searched: %+v", items)
 
-	// slug := fmt.Sprintf("demo-%d", time.Now().UnixNano())
-	// items, err := svc.CreateAndSearchWithRetry(ctx, domain.Item{
-	// 	//Slug:        fmt.Sprintf("demo-%d", time.Now().UnixNano()),
-	// 	Slug:        slug,
-	// 	Name:        "Demo",
-	// 	Description: "from hex + sqlc",
-	// 	PriceCents:  2599,
-	// 	Tags:        []string{"sqlc", "hex"},
-	// },
-	// 	nil, nil, nil, 10, 0,
-	// )
-	// if err != nil {
-	// 	log.Fatal("create:", err)
-	// }
-	// log.Printf("searched: %+v", items)
+	slug := fmt.Sprintf("demo-%d", time.Now().UnixNano())
+	items, err := svc.CreateAndSearchWithRetry(ctx, domain.Item{
+		//Slug:        fmt.Sprintf("demo-%d", time.Now().UnixNano()),
+		Slug:        slug,
+		Name:        "Demo",
+		Description: "from hex + sqlc",
+		PriceCents:  2599,
+		Tags:        []string{"sqlc", "hex"},
+	},
+		nil, nil, nil, 10, 0,
+	)
+	if err != nil {
+		log.Fatal("create:", err)
+	}
+	log.Printf("searched: %+v", items)
 
 	// // Create + Update
 	// ctx = context.Background()
