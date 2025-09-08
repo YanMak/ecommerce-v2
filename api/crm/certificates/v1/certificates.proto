@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package crm.certificates.v1;
+option go_package = "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1;crmpb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// Поиск сертификатов.
+// Метаданные запроса (gRPC metadata):
+// - x-request-id: уникальный ID запроса
+// - idempotency-key: опциональный ключ идемпотентности
+service Certificates {
+  rpc SearchCertificates(SearchCertificatesRequest) returns (SearchCertificatesResponse);
+}
+
+// Вход: опциональные фильтры + пагинация page/per_page.
+message SearchCertificatesRequest {
+  // Фильтры (все опциональные)
+  google.protobuf.StringValue q            = 1;  // ILIKE по uf_number
+  google.protobuf.StringValue inn          = 2;  // точное совпадение uf_inn
+  google.protobuf.Timestamp   created_from = 3;  // >=
+  google.protobuf.Timestamp   created_to   = 4;  // <
+  google.protobuf.Timestamp   updated_from = 5;  // >=
+  google.protobuf.Timestamp   updated_to   = 6;  // <
+  google.protobuf.Int64Value  category_id  = 7;  // =
+  google.protobuf.BoolValue   opened       = 8;  // =
+
+  // Пагинация (page>=1, per_page>0)
+  int32 page     = 20;
+  int32 per_page = 21;
+}
+
+// Строка результата (read-модель; не доменная сущность).
+message CertificateRow {
+  int64  id           = 1;
+  string title        = 2;
+  google.protobuf.StringValue uf_number    = 3; // может быть NULL
+  google.protobuf.StringValue uf_inn       = 4; // может быть NULL
+  int64  category_id  = 5;
+  bool   opened       = 6;
+  google.protobuf.Timestamp created_time   = 7; // может быть unset
+  google.protobuf.Timestamp updated_time   = 8; // может быть unset
+}
+
+// Выход: строки, общее количество и индикатор наличия следующей страницы.
+message SearchCertificatesResponse {
+  repeated CertificateRow rows = 1;
+  int64 total                  = 2;
+  bool  has_next               = 3;
+}

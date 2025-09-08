@@ -1,0 +1,10 @@
+version: v1
+plugins:
+  - name: go
+    path: protoc-gen-go        # <— локальный бинарник
+    out: gen/go
+    opt: paths=source_relative
+  - name: go-grpc
+    path: protoc-gen-go-grpc   # <— локальный бинарник
+    out: gen/go
+    opt: paths=source_relative
