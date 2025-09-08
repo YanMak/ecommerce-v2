@@ -13,10 +13,13 @@ func Only(p Predicate) Predicate {
 	return p
 }
 
+type AttemptHook func(ctx context.Context, attempt int, err error)
+
 type config struct {
 	maxAttempts int
 	baseDelay   time.Duration
 	maxDelay    time.Duration
+	onAttempt   AttemptHook
 }
 
 type Option func(*config)
@@ -24,6 +27,7 @@ type Option func(*config)
 func WithMaxAttempts(n int) Option         { return func(c *config) { c.maxAttempts = n } }
 func WithBaseDelay(d time.Duration) Option { return func(c *config) { c.baseDelay = d } }
 func WithMaxDelay(d time.Duration) Option  { return func(c *config) { c.maxDelay = d } }
+func WithOnAttempt(h AttemptHook) Option   { return func(c *config) { c.onAttempt = h } }
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 

@@ -11,6 +11,8 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/tx"
 	"github.com/YanMak/ecommerce/v2/pkg/retry"
+	"github.com/YanMak/ecommerce/v2/pkg/telemetry/logger"
+	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/outbound/postgres"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
 )
@@ -46,6 +48,10 @@ func (uc *CertificatesUC) Search(
 		retry.WithMaxAttempts(4),
 		retry.WithBaseDelay(100*time.Millisecond),
 		retry.WithMaxDelay(2*time.Second),
+		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
+			logger.L.Error(ctx, err, "retry attempt", "op", "crm.search", "attempt", attempt)
+			metrics.M.RetryAttempt(ctx, "crm.search", attempt, err)
+		}),
 	)
 
 	return
