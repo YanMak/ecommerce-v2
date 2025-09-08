@@ -7,6 +7,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// ← nullable helpers
+// ← ptr.To
+
 func OptText(p *string) pgtype.Text {
 	if p == nil {
 		return pgtype.Text{Valid: false}

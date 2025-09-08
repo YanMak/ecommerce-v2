@@ -11,6 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCertificates = `-- name: CountCertificates :one
+SELECT COUNT(*)
+FROM certificates
+WHERE
+  ($1::text         IS NULL OR uf_number ILIKE '%' || $1::text || '%')
+  AND ($2::text   IS NULL OR uf_inn = $2::text)
+  AND ($3::timestamptz IS NULL OR created_time >= $3::timestamptz)
+  AND ($4::timestamptz   IS NULL OR created_time <  $4::timestamptz)
+  AND ($5::timestamptz IS NULL OR updated_time >= $5::timestamptz)
+  AND ($6::timestamptz   IS NULL OR updated_time <  $6::timestamptz)
+  AND ($7::int8 IS NULL OR category_id = $7::int8)
+  AND ($8::bool      IS NULL OR opened = $8::bool)
+`
+
+type CountCertificatesParams struct {
+	Q           pgtype.Text        `db:"q" json:"q"`
+	Inn         pgtype.Text        `db:"inn" json:"inn"`
+	CreatedFrom pgtype.Timestamptz `db:"created_from" json:"created_from"`
+	CreatedTo   pgtype.Timestamptz `db:"created_to" json:"created_to"`
+	UpdatedFrom pgtype.Timestamptz `db:"updated_from" json:"updated_from"`
+	UpdatedTo   pgtype.Timestamptz `db:"updated_to" json:"updated_to"`
+	CategoryID  pgtype.Int8        `db:"category_id" json:"category_id"`
+	Opened      pgtype.Bool        `db:"opened" json:"opened"`
+}
+
+// Подсчёт строк под теми же фильтрами (без пагинации).
+func (q *Queries) CountCertificates(ctx context.Context, arg CountCertificatesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCertificates,
+		arg.Q,
+		arg.Inn,
+		arg.CreatedFrom,
+		arg.CreatedTo,
+		arg.UpdatedFrom,
+		arg.UpdatedTo,
+		arg.CategoryID,
+		arg.Opened,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteDocumentsByCertificate = `-- name: DeleteDocumentsByCertificate :exec
 DELETE FROM certificate_documents
 WHERE certificate_id = $1
@@ -167,10 +209,11 @@ func (q *Queries) ListCertificatesUpdatedSince(ctx context.Context, arg ListCert
 const listDocumentsForCertificate = `-- name: ListDocumentsForCertificate :many
 SELECT id, certificate_id, url, url_machine, created_at
 FROM certificate_documents
-WHERE certificate_id = $1
+WHERE certificate_id = $1::int8
 ORDER BY id ASC
 `
 
+// Список документов по сертификату
 func (q *Queries) ListDocumentsForCertificate(ctx context.Context, certificateID int64) ([]CertificateDocument, error) {
 	rows, err := q.db.Query(ctx, listDocumentsForCertificate, certificateID)
 	if err != nil {
@@ -198,84 +241,92 @@ func (q *Queries) ListDocumentsForCertificate(ctx context.Context, certificateID
 }
 
 const searchCertificates = `-- name: SearchCertificates :many
-SELECT id, xml_id, title, created_by, updated_by, moved_by, created_time, updated_time, moved_time, category_id, opened, previous_stage_id, begindate, closedate, company_id, contact_id, opportunity, is_manual_opportunity, tax_value, currency_id, opportunity_account, tax_value_account, account_currency_id, mycompany_id, source_id, source_description, webform_id, uf_uuid, uf_inn, uf_company_name, uf_number, uf_start_date, uf_contract_date, uf_end_date, uf_status, uf_ids_documents, assigned_by_id, last_activity_by, last_activity_time, utm_source, utm_medium, utm_campaign, utm_content, utm_term, observers, contact_ids, entity_type_id
+SELECT
+  id,
+  xml_id,
+  title,
+  uf_inn,
+  uf_number,
+  category_id,
+  opened,
+  created_time,
+  updated_time,
+  moved_time
 FROM certificates
-WHERE ($1::TEXT IS NULL OR uf_number ILIKE '%' || $1 || '%')
-  AND ($2::TEXT IS NULL OR uf_inn = $2)
-ORDER BY updated_time DESC
-LIMIT $3 OFFSET $4
+WHERE
+  ($1::text         IS NULL OR uf_number ILIKE '%' || $1::text || '%')
+  AND ($2::text   IS NULL OR uf_inn = $2::text)
+  AND ($3::timestamptz IS NULL OR created_time >= $3::timestamptz)
+  AND ($4::timestamptz   IS NULL OR created_time <  $4::timestamptz)
+  AND ($5::timestamptz IS NULL OR updated_time >= $5::timestamptz)
+  AND ($6::timestamptz   IS NULL OR updated_time <  $6::timestamptz)
+  AND ($7::int8 IS NULL OR category_id = $7::int8)
+  AND ($8::bool      IS NULL OR opened = $8::bool)
+ORDER BY updated_time DESC, id DESC
+LIMIT  $10::int4
+OFFSET $9::int4
 `
 
 type SearchCertificatesParams struct {
-	Column1 string `db:"column_1" json:"column_1"`
-	Column2 string `db:"column_2" json:"column_2"`
-	Limit   int32  `db:"limit" json:"limit"`
-	Offset  int32  `db:"offset" json:"offset"`
+	Q           pgtype.Text        `db:"q" json:"q"`
+	Inn         pgtype.Text        `db:"inn" json:"inn"`
+	CreatedFrom pgtype.Timestamptz `db:"created_from" json:"created_from"`
+	CreatedTo   pgtype.Timestamptz `db:"created_to" json:"created_to"`
+	UpdatedFrom pgtype.Timestamptz `db:"updated_from" json:"updated_from"`
+	UpdatedTo   pgtype.Timestamptz `db:"updated_to" json:"updated_to"`
+	CategoryID  pgtype.Int8        `db:"category_id" json:"category_id"`
+	Opened      pgtype.Bool        `db:"opened" json:"opened"`
+	Offset      int32              `db:"offset_" json:"offset_"`
+	Limit       int32              `db:"limit_" json:"limit_"`
 }
 
-// Поиск по номеру сертификата (частичное совпадение, case-insensitive) и/или ИНН.
-func (q *Queries) SearchCertificates(ctx context.Context, arg SearchCertificatesParams) ([]Certificate, error) {
+type SearchCertificatesRow struct {
+	ID          int64              `db:"id" json:"id"`
+	XmlID       pgtype.Text        `db:"xml_id" json:"xml_id"`
+	Title       string             `db:"title" json:"title"`
+	UfInn       pgtype.Text        `db:"uf_inn" json:"uf_inn"`
+	UfNumber    pgtype.Text        `db:"uf_number" json:"uf_number"`
+	CategoryID  int64              `db:"category_id" json:"category_id"`
+	Opened      bool               `db:"opened" json:"opened"`
+	CreatedTime pgtype.Timestamptz `db:"created_time" json:"created_time"`
+	UpdatedTime pgtype.Timestamptz `db:"updated_time" json:"updated_time"`
+	MovedTime   pgtype.Timestamptz `db:"moved_time" json:"moved_time"`
+}
+
+// Поиск сертификатов с опциональными фильтрами:
+// номер (ILIKE), ИНН, интервалы дат, категория, opened. Пагинация: limit/offset.
+// Для дат используем полуинтервал: from включительно, to исключительно.
+func (q *Queries) SearchCertificates(ctx context.Context, arg SearchCertificatesParams) ([]SearchCertificatesRow, error) {
 	rows, err := q.db.Query(ctx, searchCertificates,
-		arg.Column1,
-		arg.Column2,
-		arg.Limit,
+		arg.Q,
+		arg.Inn,
+		arg.CreatedFrom,
+		arg.CreatedTo,
+		arg.UpdatedFrom,
+		arg.UpdatedTo,
+		arg.CategoryID,
+		arg.Opened,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Certificate
+	var items []SearchCertificatesRow
 	for rows.Next() {
-		var i Certificate
+		var i SearchCertificatesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.XmlID,
 			&i.Title,
-			&i.CreatedBy,
-			&i.UpdatedBy,
-			&i.MovedBy,
+			&i.UfInn,
+			&i.UfNumber,
+			&i.CategoryID,
+			&i.Opened,
 			&i.CreatedTime,
 			&i.UpdatedTime,
 			&i.MovedTime,
-			&i.CategoryID,
-			&i.Opened,
-			&i.PreviousStageID,
-			&i.Begindate,
-			&i.Closedate,
-			&i.CompanyID,
-			&i.ContactID,
-			&i.Opportunity,
-			&i.IsManualOpportunity,
-			&i.TaxValue,
-			&i.CurrencyID,
-			&i.OpportunityAccount,
-			&i.TaxValueAccount,
-			&i.AccountCurrencyID,
-			&i.MycompanyID,
-			&i.SourceID,
-			&i.SourceDescription,
-			&i.WebformID,
-			&i.UfUuid,
-			&i.UfInn,
-			&i.UfCompanyName,
-			&i.UfNumber,
-			&i.UfStartDate,
-			&i.UfContractDate,
-			&i.UfEndDate,
-			&i.UfStatus,
-			&i.UfIdsDocuments,
-			&i.AssignedByID,
-			&i.LastActivityBy,
-			&i.LastActivityTime,
-			&i.UtmSource,
-			&i.UtmMedium,
-			&i.UtmCampaign,
-			&i.UtmContent,
-			&i.UtmTerm,
-			&i.Observers,
-			&i.ContactIds,
-			&i.EntityTypeID,
 		); err != nil {
 			return nil, err
 		}

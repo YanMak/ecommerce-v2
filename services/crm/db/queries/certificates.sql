@@ -109,16 +109,51 @@ ORDER BY updated_time ASC
 LIMIT $2 OFFSET $3;
 
 -- name: SearchCertificates :many
--- Поиск по номеру сертификата (частичное совпадение, case-insensitive) и/или ИНН.
-SELECT *
+-- Поиск сертификатов с опциональными фильтрами:
+-- номер (ILIKE), ИНН, интервалы дат, категория, opened. Пагинация: limit/offset.
+-- Для дат используем полуинтервал: from включительно, to исключительно.
+SELECT
+  id,
+  xml_id,
+  title,
+  uf_inn,
+  uf_number,
+  category_id,
+  opened,
+  created_time,
+  updated_time,
+  moved_time
 FROM certificates
-WHERE ($1::TEXT IS NULL OR uf_number ILIKE '%' || $1 || '%')
-  AND ($2::TEXT IS NULL OR uf_inn = $2)
-ORDER BY updated_time DESC
-LIMIT $3 OFFSET $4;
+WHERE
+  (sqlc.narg(q)::text         IS NULL OR uf_number ILIKE '%' || sqlc.narg(q)::text || '%')
+  AND (sqlc.narg(inn)::text   IS NULL OR uf_inn = sqlc.narg(inn)::text)
+  AND (sqlc.narg(created_from)::timestamptz IS NULL OR created_time >= sqlc.narg(created_from)::timestamptz)
+  AND (sqlc.narg(created_to)::timestamptz   IS NULL OR created_time <  sqlc.narg(created_to)::timestamptz)
+  AND (sqlc.narg(updated_from)::timestamptz IS NULL OR updated_time >= sqlc.narg(updated_from)::timestamptz)
+  AND (sqlc.narg(updated_to)::timestamptz   IS NULL OR updated_time <  sqlc.narg(updated_to)::timestamptz)
+  AND (sqlc.narg(category_id)::int8 IS NULL OR category_id = sqlc.narg(category_id)::int8)
+  AND (sqlc.narg(opened)::bool      IS NULL OR opened = sqlc.narg(opened)::bool)
+ORDER BY updated_time DESC, id DESC
+LIMIT  sqlc.arg(limit_)::int4
+OFFSET sqlc.arg(offset_)::int4;
+
+-- name: CountCertificates :one
+-- Подсчёт строк под теми же фильтрами (без пагинации).
+SELECT COUNT(*)
+FROM certificates
+WHERE
+  (sqlc.narg(q)::text         IS NULL OR uf_number ILIKE '%' || sqlc.narg(q)::text || '%')
+  AND (sqlc.narg(inn)::text   IS NULL OR uf_inn = sqlc.narg(inn)::text)
+  AND (sqlc.narg(created_from)::timestamptz IS NULL OR created_time >= sqlc.narg(created_from)::timestamptz)
+  AND (sqlc.narg(created_to)::timestamptz   IS NULL OR created_time <  sqlc.narg(created_to)::timestamptz)
+  AND (sqlc.narg(updated_from)::timestamptz IS NULL OR updated_time >= sqlc.narg(updated_from)::timestamptz)
+  AND (sqlc.narg(updated_to)::timestamptz   IS NULL OR updated_time <  sqlc.narg(updated_to)::timestamptz)
+  AND (sqlc.narg(category_id)::int8 IS NULL OR category_id = sqlc.narg(category_id)::int8)
+  AND (sqlc.narg(opened)::bool      IS NULL OR opened = sqlc.narg(opened)::bool);
 
 -- name: ListDocumentsForCertificate :many
+-- Список документов по сертификату
 SELECT *
 FROM certificate_documents
-WHERE certificate_id = $1
+WHERE certificate_id = sqlc.arg(certificate_id)::int8
 ORDER BY id ASC;
