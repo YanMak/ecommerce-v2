@@ -12,7 +12,7 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/pgtest"
 	"github.com/YanMak/ecommerce/v2/pkg/ptr"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/outbound/postgres"
-	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
+	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
 )
 
@@ -85,7 +85,7 @@ func Test_CertificatesRepo_Search(t *testing.T) {
 		repo := postgres.NewCertificatesRepo(tx)
 
 		rows, total, hasNext, err := repo.Search(ctx,
-			repoports.SearchFilter{
+			contracts.SearchFilter{
 				Q:          ptr.To("REPO"),
 				Inn:        ptr.To("9876543210"),
 				CategoryID: ptr.To(int64(3)),

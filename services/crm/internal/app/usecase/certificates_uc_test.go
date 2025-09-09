@@ -13,7 +13,7 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/pgtest"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/tx"
 	"github.com/YanMak/ecommerce/v2/pkg/ptr"
-	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
+	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
 )
@@ -88,7 +88,7 @@ func Test_CertificatesUC_Search(t *testing.T) {
 	uc := usecase.NewCertificatesUC(pool)
 
 	rows, total, hasNext, err := uc.Search(ctx,
-		repoports.SearchFilter{
+		contracts.SearchFilter{
 			Q:           ptr.To("UC-TEST"),
 			Inn:         ptr.To("5555555555"),
 			CategoryID:  ptr.To(int64(5)),

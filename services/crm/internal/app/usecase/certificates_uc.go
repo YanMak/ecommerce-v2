@@ -14,7 +14,7 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/logger"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/outbound/postgres"
-	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
+	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 )
 
 type CertificatesUC struct {
@@ -29,9 +29,9 @@ func NewCertificatesUC(pool *pgxpool.Pool) *CertificatesUC {
 // Ретраим только Transient-ошибки (deadlock/serialization/сеть и т.п.).
 func (uc *CertificatesUC) Search(
 	ctx context.Context,
-	f repoports.SearchFilter,
+	f contracts.SearchFilter,
 	p paging.OffsetParams,
-) (rows []repoports.CertificateRow, total int64, hasNext bool, err error) {
+) (rows []contracts.CertificateRow, total int64, hasNext bool, err error) {
 
 	// общий дедлайн на операцию (по желанию можно вынести в конфиг)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)

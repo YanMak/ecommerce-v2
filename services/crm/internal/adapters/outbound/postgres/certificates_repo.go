@@ -7,6 +7,7 @@ import (
 	pgxerr "github.com/YanMak/ecommerce/v2/pkg/errkit/pgx"
 	"github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit"
+	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
 )
@@ -27,7 +28,7 @@ func NewCertificatesRepo(db dbgen.DBTX) repoports.CertificatesRepo {
 	}
 }
 
-func (r *certificatesRepo) Search(ctx context.Context, f repoports.SearchFilter, p paging.OffsetParams) ([]repoports.CertificateRow, int64, bool, error) {
+func (r *certificatesRepo) Search(ctx context.Context, f contracts.SearchFilter, p paging.OffsetParams) ([]contracts.CertificateRow, int64, bool, error) {
 	norm := paging.NormalizeOffset(p, paging.OffsetOpts{DefaultPerPage: r.defaultPerPage, MaxPerPage: r.maxPerPage})
 
 	params := dbgen.SearchCertificatesParams{
@@ -62,7 +63,7 @@ func (r *certificatesRepo) Search(ctx context.Context, f repoports.SearchFilter,
 		return nil, 0, false, pgxerr.Map(err)
 	}
 
-	out := make([]repoports.CertificateRow, 0, len(rows))
+	out := make([]contracts.CertificateRow, 0, len(rows))
 	for _, rrow := range rows {
 		var ufNum *string
 		if rrow.UfNumber.Valid {
@@ -85,7 +86,7 @@ func (r *certificatesRepo) Search(ctx context.Context, f repoports.SearchFilter,
 			updated = &t
 		}
 
-		out = append(out, repoports.CertificateRow{
+		out = append(out, contracts.CertificateRow{
 			ID:          rrow.ID,
 			Title:       rrow.Title,
 			UfNumber:    ufNum,

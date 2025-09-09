@@ -2,6 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Api-gateway (launch)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/services/api-gateway/cmd/server",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ITEMS_DB_URL": "postgres://postgres:postgres@localhost:5432/items?sslmode=disable",
+        "PORT": "8081"
+    }
+    },
+    {
       "name": "Items (launch)",
       "type": "go",
       "request": "launch",
@@ -10,7 +22,7 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "ITEMS_DB_URL": "postgres://postgres:postgres@localhost:5432/items?sslmode=disable",
-        "PORT": "8081"
+        "PORT": "8083"
       }
     },
     {
