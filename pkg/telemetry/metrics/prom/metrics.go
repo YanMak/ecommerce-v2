@@ -2,6 +2,8 @@ package prom
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 type Collectors struct {
@@ -53,8 +55,8 @@ func New() (*prometheus.Registry, *Collectors) {
 		c.HTTPRequestDuration,
 		c.GRPCClientTotal,
 		c.GRPCClientDuration,
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
-		prometheus.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
 	)
 
 	return reg, c

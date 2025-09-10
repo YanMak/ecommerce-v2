@@ -8,10 +8,14 @@ import (
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	httpmdw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
 
 	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/dto"
+
+	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 )
 
 type Server struct{ router chi.Router }
@@ -21,7 +25,7 @@ type Server struct{ router chi.Router }
 // @description Training project: super-endpoint covering full HTTP inputs with validation.
 // @BasePath    /v1
 // @schemes     http
-func NewServer(uc *usecase.CertificatesUC) *Server {
+func NewServer(reg *prometheus.Registry, cols *prommetrics.Collectors, uc *usecase.CertificatesUC) *Server {
 	r := chi.NewRouter()
 
 	r.Use(
@@ -31,8 +35,12 @@ func NewServer(uc *usecase.CertificatesUC) *Server {
 		middleware.Compress(5),
 	)
 
+	r.Use(httpmdw.WithMetricsChi(cols))
+
 	// кросс-срезовые
 	r.Use(httpmdw.WithRequestID, httpmdw.WithIdempotencyKey)
+
+	r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 
 	// маршрут: биндеры → тонкий хендлер
 	r.With(

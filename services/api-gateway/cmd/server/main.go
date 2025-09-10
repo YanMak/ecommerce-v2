@@ -10,6 +10,8 @@ import (
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 )
 
 func main() {
@@ -28,7 +30,10 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	srv := httpapi.NewServer(certsUC)
+	// chi-маршрут для экспорта метрик
+	reg, cols := prommetrics.New()
+
+	srv := httpapi.NewServer(reg, cols, certsUC)
 	log.Println("HTTP listening on :8080")
 	if err := http.ListenAndServe(":8080", srv); err != nil {
 		log.Fatal(err)
