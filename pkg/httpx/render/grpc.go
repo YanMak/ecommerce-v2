@@ -10,19 +10,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Violation struct {
-	Field  string `json:"field"`
-	Reason string `json:"reason"`
-}
-
-type ErrorBody struct {
-	Code           string      `json:"code,omitempty"`
-	Message        string      `json:"message"`
-	RequestID      string      `json:"request_id,omitempty"`
-	IdempotencyKey string      `json:"idempotency_key,omitempty"`
-	Violations     []Violation `json:"violations,omitempty"`
-}
-
 func GRPCError(w http.ResponseWriter, r *http.Request, err error) {
 	st, ok := status.FromError(err)
 	if !ok {

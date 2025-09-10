@@ -47,7 +47,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	runGRPC(":50051", pool)
+	err = runGRPC(":50051", pool)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("hallo")
 }

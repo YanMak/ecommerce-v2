@@ -6,8 +6,7 @@ import (
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
 	"github.com/YanMak/ecommerce/v2/pkg/grpcx"
-	"github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
-	crmhandlers "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/handlers/crm"
+	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,7 +16,7 @@ func main() {
 
 	// gRPC клиент CRM — создаём ОДИН раз, реиспользуем
 	conn, err := grpc.NewClient(
-		"crm:50051", // адрес CRM
+		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),    // TODO: TLS позже
 		grpc.WithUnaryInterceptor(grpcx.UnaryClientMetaInterceptor), // метаданные
 	)
@@ -29,13 +28,29 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	// HTTP router: middleware для request-id и handler, который вызывает usecase
-	mux := http.NewServeMux()
-	mux.Handle("/crm/certificates/search", middleware.WithRequestID(crmhandlers.Search(certsUC)))
-	mux.Handle("/healthz", middleware.WithRequestID(crmhandlers.Healtz(certsUC)))
+	srv := httpapi.NewServer(certsUC)
+	log.Println("HTTP listening on :8080")
+	if err := http.ListenAndServe(":8080", srv); err != nil {
+		log.Fatal(err)
+	}
 
-	log.Println("api-gateway listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	// // HTTP router: middleware для request-id и handler, который вызывает usecase
+	// mux := http.NewServeMux()
+	// mux.Handle("/crm/certificates/search",
+	// 	middleware.WithRequestID(
+	// 		middleware.WithIdempotencyKey(
+	// 			crmapi.ValidateCertsSearch(
+	// 				crmhandlers.Search(certsUC)))))
+
+	// mux.Handle("/crm/certificates/search/raw",
+	// 	middleware.WithRequestID(
+	// 		middleware.WithIdempotencyKey(
+	// 			crmhandlers.Search(certsUC))))
+
+	// mux.Handle("/healthz", middleware.WithRequestID(crmhandlers.Healtz(certsUC)))
+
+	// log.Println("api-gateway listening on :8080")
+	// log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
 // func main_() {
