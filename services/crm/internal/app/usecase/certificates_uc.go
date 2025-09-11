@@ -6,15 +6,18 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 
 	"github.com/YanMak/ecommerce/v2/pkg/errkit"
 	"github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/tx"
-	"github.com/YanMak/ecommerce/v2/pkg/retry"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/logger"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/outbound/postgres"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
+
+	"github.com/YanMak/ecommerce/v2/pkg/retry"
+	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 )
 
 type CertificatesUC struct {
@@ -33,6 +36,8 @@ func (uc *CertificatesUC) Search(
 	p paging.OffsetParams,
 ) (rows []contracts.CertificateRow, total int64, hasNext bool, err error) {
 
+	log := tlog.FromContext(ctx)
+
 	// общий дедлайн на операцию (по желанию можно вынести в конфиг)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -49,8 +54,19 @@ func (uc *CertificatesUC) Search(
 		retry.WithBaseDelay(100*time.Millisecond),
 		retry.WithMaxDelay(2*time.Second),
 		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
+			// Старая заглушка
 			logger.L.Error(ctx, err, "retry attempt", "op", "crm.search", "attempt", attempt)
 			metrics.M.RetryAttempt(ctx, "crm.search", attempt, err)
+
+			//Новое добавление изучаем телеметрию
+			log.Warn("retry_attempt",
+				zap.Int("attempt", a.N),
+				zap.Int("max_attempts", 3),
+				zap.Float64("sleep_ms", a.NextDelay.Seconds()*1000),
+				zap.Float64("elapsed_ms", a.Elapsed.Seconds()*1000),
+				zap.Error(a.Err),
+			)
+
 		}),
 	)
 
