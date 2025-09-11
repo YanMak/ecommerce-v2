@@ -30,7 +30,7 @@ func NewServer(logger *zap.Logger, reg *prometheus.Registry, cols *prommetrics.C
 	r := chi.NewRouter()
 
 	r.Use(
-		middleware.RequestID,
+		//middleware.RequestID,
 		middleware.Recoverer,
 		//middleware.Logger,
 		middleware.Compress(5),
@@ -43,13 +43,20 @@ func NewServer(logger *zap.Logger, reg *prometheus.Registry, cols *prommetrics.C
 	r.Use(httpmdw.WithZapLogger(logger))
 	r.Use(httpmdw.WithMetricsChi(cols))
 
-	r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	//r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	r.Method("GET", "/metrics_", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 
 	// маршрут: биндеры → тонкий хендлер
 	r.With(
 		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
 		// bind.WithDTO(BindHeaders), bind.WithDTO(BindCookies), bind.WithDTO(BindPath) — добавим по мере надобности
 	).Get("/crm/certificates/search", crmhandlers.Search(uc))
+
+	// маршрут: биндеры → тонкий хендлер
+	r.With(
+		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
+		// bind.WithDTO(BindHeaders), bind.WithDTO(BindCookies), bind.WithDTO(BindPath) — добавим по мере надобности
+	).Get("/crm/certificates/search_test", crmhandlers.Search(uc))
 
 	// тут позже смонтируем /v1 и контроллеры
 	return &Server{router: r}

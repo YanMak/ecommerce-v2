@@ -16,14 +16,17 @@ import (
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics"
 	"go.uber.org/zap"
+
+	crmmetrics "github.com/YanMak/ecommerce/v2/services/crm/internal/metrics"
 )
 
 type CertificatesUC struct {
 	pool *pgxpool.Pool
+	m    *crmmetrics.CRM
 }
 
-func NewCertificatesUC(pool *pgxpool.Pool) *CertificatesUC {
-	return &CertificatesUC{pool: pool}
+func NewCertificatesUC(pool *pgxpool.Pool, crmM *crmmetrics.CRM) *CertificatesUC {
+	return &CertificatesUC{pool: pool, m: crmM}
 }
 
 func (uc *CertificatesUC) Search(
@@ -39,6 +42,9 @@ func (uc *CertificatesUC) Search(
 	run := func(ctx context.Context) error {
 		return tx.InTx(ctx, uc.pool, func(ctx context.Context, dbtx pgx.Tx) error {
 			r := repo.NewCertificatesRepo(dbtx)
+
+			// imitationf of operation timeout
+			//ctxOp, _ := context.WithTimeout(ctx, 1*time.Nanosecond)
 
 			var e error
 			rows, total, hasNext, e = r.Search(ctx, f, p)
@@ -68,6 +74,7 @@ func (uc *CertificatesUC) Search(
 	)
 
 	dur := time.Since(start)
+	durSeconds := dur.Seconds()
 
 	if err != nil {
 		// итоговый фейл
@@ -76,10 +83,17 @@ func (uc *CertificatesUC) Search(
 			zap.Duration("duration", dur),
 			zap.Error(err),
 		)
+
+		uc.m.SearchTotal.WithLabelValues("error").Inc()
+		uc.m.SearchDuration.WithLabelValues("error").Observe(durSeconds)
+
 		return nil, 0, false, err
 	}
 
 	// успех
+	uc.m.SearchTotal.WithLabelValues("ok").Inc()
+	uc.m.SearchDuration.WithLabelValues("ok").Observe(durSeconds)
+
 	log.Info("search_ok",
 		zap.String("op", "crm.search"),
 		zap.Duration("duration", dur),

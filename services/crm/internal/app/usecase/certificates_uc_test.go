@@ -13,9 +13,12 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/pgtest"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/tx"
 	"github.com/YanMak/ecommerce/v2/pkg/ptr"
+	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
+
+	crmmetrics "github.com/YanMak/ecommerce/v2/services/crm/internal/metrics"
 )
 
 func Test_CertificatesUC_Search(t *testing.T) {
@@ -85,7 +88,11 @@ func Test_CertificatesUC_Search(t *testing.T) {
 		t.Fatalf("setup insert: %v", err)
 	}
 
-	uc := usecase.NewCertificatesUC(pool)
+	//metrics
+	reg, _ := prom.New()
+	crmM := crmmetrics.Register(reg)
+
+	uc := usecase.NewCertificatesUC(pool, crmM)
 
 	rows, total, hasNext, err := uc.Search(ctx,
 		contracts.SearchFilter{

@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -24,6 +26,12 @@ func main() {
 		panic(err)
 	}
 	defer logger.Sync() //nolint:errcheck
+	reqLog := logger.With(
+
+		zap.String("service", "api-gateway"),
+		zap.String("env", os.Getenv("ENV")),
+		zap.String("version", "buildVersionXXX"),
+	)
 
 	// chi-маршрут для экспорта метрик
 	reg, cols := prommetrics.New()
@@ -44,7 +52,7 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	srv := httpapi.NewServer(logger, reg, cols, certsUC)
+	srv := httpapi.NewServer(reqLog, reg, cols, certsUC)
 	log.Println("HTTP listening on :8080")
 	if err := http.ListenAndServe(":8080", srv); err != nil {
 		log.Fatal(err)
