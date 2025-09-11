@@ -65,6 +65,12 @@ func Do(ctx context.Context, fn func(context.Context) error, predicate Predicate
 		if attempt >= cfg.maxAttempts {
 			return err
 		}
+
+		// ❸ вызываем хук — мы ДЕЙСТВИТЕЛЬНО будем ретраить
+		if cfg.onAttempt != nil {
+			cfg.onAttempt(ctx, attempt, err)
+		}
+
 		// backoff = min(base * 2^(attempt-1), maxDelay)
 		backoff := cfg.baseDelay << (attempt - 1)
 		if backoff > cfg.maxDelay {
