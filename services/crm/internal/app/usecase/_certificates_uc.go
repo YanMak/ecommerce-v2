@@ -11,7 +11,8 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/errkit"
 	"github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/pkg/pgkit/tx"
-	"github.com/YanMak/ecommerce/v2/pkg/telemetry/logger"
+
+	//"github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/outbound/postgres"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
@@ -55,7 +56,8 @@ func (uc *CertificatesUC) Search(
 		retry.WithMaxDelay(2*time.Second),
 		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
 			// Старая заглушка
-			logger.L.Error(ctx, err, "retry attempt", "op", "crm.search", "attempt", attempt)
+			//logger.L.Error(ctx, err, "retry attempt", "op", "crm.search", "attempt", attempt)
+			//log.Info(ctx, "msg", "k", v)
 			metrics.M.RetryAttempt(ctx, "crm.search", attempt, err)
 
 			//Новое добавление изучаем телеметрию
