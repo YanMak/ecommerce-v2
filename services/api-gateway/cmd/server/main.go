@@ -5,22 +5,36 @@ import (
 	"net/http"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
-	"github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
+
+	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 )
 
 func main() {
 
+	// logger
+	logger, err := tlog.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync() //nolint:errcheck
+
+	// chi-маршрут для экспорта метрик
+	reg, cols := prommetrics.New()
+
 	// gRPC клиент CRM — создаём ОДИН раз, реиспользуем
 	conn, err := grpc.NewClient(
 		"localhost:50051",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),    // TODO: TLS позже
-		grpc.WithUnaryInterceptor(grpcx.UnaryClientMetaInterceptor), // метаданные
+		grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
+		grpc.WithChainUnaryInterceptor(
+			grpcx.UnaryClientMetaInterceptor,           // прокидка request-id/idempotency
+			grpcx.UnaryClientMetricsInterceptor(cols)), // ← метрики клиента
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -30,10 +44,7 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	// chi-маршрут для экспорта метрик
-	reg, cols := prommetrics.New()
-
-	srv := httpapi.NewServer(reg, cols, certsUC)
+	srv := httpapi.NewServer(logger, reg, cols, certsUC)
 	log.Println("HTTP listening on :8080")
 	if err := http.ListenAndServe(":8080", srv); err != nil {
 		log.Fatal(err)

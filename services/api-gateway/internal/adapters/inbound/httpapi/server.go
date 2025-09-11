@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 
 	httpmdw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
 
@@ -25,20 +26,22 @@ type Server struct{ router chi.Router }
 // @description Training project: super-endpoint covering full HTTP inputs with validation.
 // @BasePath    /v1
 // @schemes     http
-func NewServer(reg *prometheus.Registry, cols *prommetrics.Collectors, uc *usecase.CertificatesUC) *Server {
+func NewServer(logger *zap.Logger, reg *prometheus.Registry, cols *prommetrics.Collectors, uc *usecase.CertificatesUC) *Server {
 	r := chi.NewRouter()
 
 	r.Use(
 		middleware.RequestID,
 		middleware.Recoverer,
-		middleware.Logger,
+		//middleware.Logger,
 		middleware.Compress(5),
 	)
 
-	r.Use(httpmdw.WithMetricsChi(cols))
-
 	// кросс-срезовые
-	r.Use(httpmdw.WithRequestID, httpmdw.WithIdempotencyKey)
+	r.Use(httpmdw.WithRequestID)
+	r.Use(httpmdw.WithIdempotencyKey)
+
+	r.Use(httpmdw.WithZapLogger(logger))
+	r.Use(httpmdw.WithMetricsChi(cols))
 
 	r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 

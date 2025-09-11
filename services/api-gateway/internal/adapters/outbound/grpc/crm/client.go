@@ -15,6 +15,7 @@ type Client struct {
 }
 
 func New(ctx context.Context, addr string, extra ...grpc.DialOption) (*Client, error) {
+
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
 		grpc.WithUnaryInterceptor(grpcx.UnaryClientMetaInterceptor),

@@ -9,25 +9,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// обёртка, чтобы перехватить код ответа
-type statusWriter struct {
-	http.ResponseWriter
-	code int
-}
-
-func (w *statusWriter) WriteHeader(code int) {
-	w.code = code
-	w.ResponseWriter.WriteHeader(code)
-}
-
 // WithMetricsChi — считает HTTP-запросы и время обработки для chi-роутера.
 func WithMetricsChi(c *prom.Collectors) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+			//sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+			rc := NewCapture(w) // делаем обёртку
+
 			start := time.Now()
 
-			next.ServeHTTP(sw, r)
+			next.ServeHTTP(rc, r)
 
 			// шаблон маршрута (надежнее брать ПОСЛЕ next — к этому моменту он уже финализирован)
 			route := r.URL.Path
@@ -37,11 +28,20 @@ func WithMetricsChi(c *prom.Collectors) func(http.Handler) http.Handler {
 				}
 			}
 
-			method := r.Method
-			sec := time.Since(start).Seconds()
+			if route == "/metrics" {
+				return
+			}
 
-			c.HTTPRequestsTotal.WithLabelValues(route, method, strconv.Itoa(sw.code)).Inc()
-			c.HTTPRequestDuration.WithLabelValues(route, method).Observe(sec)
+			status := rc.Status
+			if status == 0 {
+				status = http.StatusOK
+			} // если WriteHeader/Write не вызывали
+
+			method := r.Method
+			latency := time.Since(start).Seconds()
+
+			c.HTTPRequestsTotal.WithLabelValues(route, method, strconv.Itoa(status)).Inc()
+			c.HTTPRequestDuration.WithLabelValues(route, method).Observe(latency)
 		})
 	}
 }

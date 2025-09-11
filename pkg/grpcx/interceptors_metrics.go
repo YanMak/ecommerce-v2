@@ -7,6 +7,7 @@ import (
 
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -45,5 +46,26 @@ func UnaryClientMetricsInterceptor(c *prom.Collectors) grpc.UnaryClientIntercept
 		c.GRPCClientTotal.WithLabelValues(svc, m, code).Inc()
 		c.GRPCClientDuration.WithLabelValues(svc, m).Observe(sec)
 		return err
+	}
+}
+
+// UnaryServerMetricsInterceptor — считает серверные вызовы.
+func UnaryServerMetricsInterceptor(c *prom.Collectors) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		svc, m := splitFullMethod(info.FullMethod)
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		sec := time.Since(start).Seconds()
+
+		st, _ := status.FromError(err)
+		code := st.Code().String()
+		if code == "" {
+			code = codes.OK.String()
+		}
+
+		// Можно завести отдельные векторы для server-*; для краткости используем client-метрики или добавь в Collectors ещё два вектора:
+		c.GRPCServerTotal.WithLabelValues(svc, m, code).Inc()
+		c.GRPCServerDuration.WithLabelValues(svc, m).Observe(sec)
+		return resp, err
 	}
 }

@@ -5,16 +5,21 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
-	"github.com/YanMak/ecommerce/v2/pkg/grpcx"
+	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 	grpcin "github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/inbound/grpc"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
+
+	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 )
 
-func runGRPC(addr string, pool *pgxpool.Pool) error {
+func runGRPC(addr string, pool *pgxpool.Pool, cols *prom.Collectors) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -24,6 +29,7 @@ func runGRPC(addr string, pool *pgxpool.Pool) error {
 		grpc.ChainUnaryInterceptor(
 			grpcx.UnaryServerMetaInterceptor,
 			// тут позже можно добавить лог/метрики/рековери-интерсепторы
+			grpcx.UnaryServerMetricsInterceptor(cols),
 		),
 		grpc.ChainStreamInterceptor(
 			grpcx.StreamServerMetaInterceptor, // если будут streaming RPC
@@ -47,7 +53,16 @@ func main() {
 	}
 	defer pool.Close()
 
-	err = runGRPC(":50051", pool)
+	//metrics
+	reg, cols := prom.New()
+
+	go func() {
+		mux := chi.NewRouter()
+		mux.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+		_ = http.ListenAndServe(":8081", mux)
+	}()
+
+	err = runGRPC(":50051", pool, cols)
 	if err != nil {
 		panic(err)
 	}

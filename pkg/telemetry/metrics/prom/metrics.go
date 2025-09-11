@@ -11,6 +11,8 @@ type Collectors struct {
 	HTTPRequestDuration *prometheus.HistogramVec
 	GRPCClientTotal     *prometheus.CounterVec
 	GRPCClientDuration  *prometheus.HistogramVec
+	GRPCServerTotal     *prometheus.CounterVec
+	GRPCServerDuration  *prometheus.HistogramVec
 }
 
 // New создает реестр и регистрирует коллекции.
@@ -48,6 +50,21 @@ func New() (*prometheus.Registry, *Collectors) {
 			},
 			[]string{"service", "method"},
 		),
+		GRPCServerTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "grpc_server_requests_total",
+				Help: "Total number of gRPC server calls.",
+			},
+			[]string{"service", "method", "code"},
+		),
+		GRPCServerDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "grpc_server_duration_seconds",
+				Help:    "Duration of gRPC server calls.",
+				Buckets: prometheus.DefBuckets,
+			},
+			[]string{"service", "method"},
+		),
 	}
 
 	reg.MustRegister(
@@ -55,6 +72,8 @@ func New() (*prometheus.Registry, *Collectors) {
 		c.HTTPRequestDuration,
 		c.GRPCClientTotal,
 		c.GRPCClientDuration,
+		c.GRPCServerTotal,
+		c.GRPCServerDuration,
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		collectors.NewGoCollector(),
 	)
