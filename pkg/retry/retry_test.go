@@ -11,6 +11,8 @@ import (
 
 func Test_Retry_SucceedsOnSecondAttempt(t *testing.T) {
 	var calls int
+	var hookCalls int
+
 	fn := func(context.Context) error {
 		calls++
 		if calls == 1 {
@@ -18,28 +20,52 @@ func Test_Retry_SucceedsOnSecondAttempt(t *testing.T) {
 		}
 		return nil
 	}
-	err := Do(context.Background(), fn, Only(errkit.IsTransient),
-		WithMaxAttempts(3), WithBaseDelay(10*time.Millisecond), WithMaxDelay(20*time.Millisecond))
+	err := Do(
+		context.Background(),
+		fn,
+		Only(errkit.IsTransient),
+		WithMaxAttempts(3),
+		WithBaseDelay(10*time.Millisecond),
+		WithMaxDelay(20*time.Millisecond),
+		WithOnAttempt(func(ctx context.Context, attempt int, err error) {
+			hookCalls++
+		}),
+	)
 	if err != nil {
 		t.Fatalf("want nil, got %v", err)
 	}
 	if calls != 2 {
 		t.Fatalf("want 2 calls, got %d", calls)
 	}
+	if hookCalls == 0 {
+		t.Fatalf("want 1 hookCalls, got %d", hookCalls)
+	}
 }
 
 func Test_Retry_NoRetryOnNonRetryable(t *testing.T) {
 	var calls int
+	var hookCalls int
+
 	fn := func(context.Context) error {
 		calls++
 		return errors.New("boom")
 	}
-	err := Do(context.Background(), fn, Only(errkit.IsTransient))
+	err := Do(
+		context.Background(),
+		fn,
+		Only(errkit.IsTransient),
+		WithOnAttempt(func(ctx context.Context, attempt int, err error) {
+			hookCalls++
+		}),
+	)
 	if err == nil {
 		t.Fatal("want error, got nil")
 	}
 	if calls != 1 {
 		t.Fatalf("want 1 call, got %d", calls)
+	}
+	if hookCalls != 0 {
+		t.Fatalf("want 0 hookCalls, got %d", hookCalls)
 	}
 }
 

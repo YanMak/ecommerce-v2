@@ -26,9 +26,6 @@ func WithZapLogger(base *zap.Logger) func(http.Handler) http.Handler {
 				route = r.URL.Path // запасной вариант
 			}
 
-			if route == "/metrics" {
-				return
-			}
 			reqID := tctx.RequestID(r.Context())
 			idem := tctx.IdempotencyKey(r.Context())
 			method := r.Method
@@ -51,6 +48,10 @@ func WithZapLogger(base *zap.Logger) func(http.Handler) http.Handler {
 			status := rc.Status
 			if status == 0 {
 				status = http.StatusOK
+			}
+
+			if route == "/metrics" {
+				return
 			}
 
 			durMs := time.Since(start).Seconds() * 1000

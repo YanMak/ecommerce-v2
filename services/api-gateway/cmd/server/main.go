@@ -1,42 +1,64 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
-	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi"
+	crmhandlers "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/handlers/crm"
 	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
+
+	"github.com/YanMak/ecommerce/v2/pkg/httpx/bind"
+	httpmdw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
+
+	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
+
+	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/dto"
 )
 
 func main() {
+	// ---- config
+	httpAddr := cfg.Str("HTTP_ADDR", ":8080")
+	adminAddr := cfg.Str("ADMIN_ADDR", ":8088")
+	readTO := cfg.Dur("HTTP_READ_TIMEOUT", 5*time.Second)
+	writeTO := cfg.Dur("HTTP_WRITE_TIMEOUT", 10*time.Second)
+	idleTO := cfg.Dur("HTTP_IDLE_TIMEOUT", 60*time.Second)
+	shutdownTO := cfg.Dur("SHUTDOWN_TIMEOUT", 10*time.Second)
 
-	// logger
+	// ---- telemetry
+	reg, cols := prommetrics.New()
 	logger, err := tlog.NewProduction()
 	if err != nil {
 		panic(err)
 	}
 	defer logger.Sync() //nolint:errcheck
-	reqLog := logger.With(
+	baseLogger := logger.With(
 
 		zap.String("service", "api-gateway"),
 		zap.String("env", os.Getenv("ENV")),
 		zap.String("version", "buildVersionXXX"),
 	)
 
-	// chi-маршрут для экспорта метрик
-	reg, cols := prommetrics.New()
-
-	// gRPC клиент CRM — создаём ОДИН раз, реиспользуем
+	// ---- gRPC
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
@@ -52,51 +74,98 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	srv := httpapi.NewServer(reqLog, reg, cols, certsUC)
-	log.Println("HTTP listening on :8080")
-	if err := http.ListenAndServe(":8080", srv); err != nil {
-		log.Fatal(err)
+	// ---- HTTP main router
+	r := chi.NewRouter()
+	r.Use(
+		//middleware.RequestID,
+		middleware.Recoverer,
+		//middleware.Logger,
+		middleware.Compress(5),
+		httpmdw.WithRequestID,
+		httpmdw.WithIdempotencyKey,
+		httpmdw.WithZapLogger(baseLogger),
+		httpmdw.WithMetricsChi(cols),
+	)
+
+	mainSrv := &http.Server{
+		Addr:              httpAddr,
+		Handler:           r,
+		ReadTimeout:       readTO,
+		ReadHeaderTimeout: readTO,
+		WriteTimeout:      writeTO,
+		IdleTimeout:       idleTO,
+	}
+	r.With(
+		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
+		// bind.WithDTO(BindHeaders), bind.WithDTO(BindCookies), bind.WithDTO(BindPath) — добавим по мере надобности
+	).Get("/crm/certificates/search", crmhandlers.Search(certsUC))
+
+	// ---- HTTP admin router
+	admin := chi.NewRouter()
+	mountAdminHTTP(admin, reg, conn)
+	adminSrv := &http.Server{
+		Addr:              adminAddr,
+		Handler:           admin,
+		ReadHeaderTimeout: 2 * time.Second,
+	}
+	//srv := httpapi.NewServer(r, reqLog, reg, cols, certsUC)
+
+	// ---- run both servers
+	errCh := make(chan error, 2)
+	go func() {
+		logger.Info("http_listen", zap.String("addr", httpAddr))
+		if err := mainSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+	go func() {
+		logger.Info("admin_listen", zap.String("addr", adminAddr))
+		if err := adminSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	// ---- graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case <-ctx.Done(): // получили сигнал
+		baseLogger.Info("shutdown_begin")
+	case err := <-errCh: // один из серверов упал
+		baseLogger.Error("server_exit", zap.Error(err))
 	}
 
-	// // HTTP router: middleware для request-id и handler, который вызывает usecase
-	// mux := http.NewServeMux()
-	// mux.Handle("/crm/certificates/search",
-	// 	middleware.WithRequestID(
-	// 		middleware.WithIdempotencyKey(
-	// 			crmapi.ValidateCertsSearch(
-	// 				crmhandlers.Search(certsUC)))))
+	shCtx, cancel := context.WithTimeout(context.Background(), shutdownTO)
+	defer cancel()
 
-	// mux.Handle("/crm/certificates/search/raw",
-	// 	middleware.WithRequestID(
-	// 		middleware.WithIdempotencyKey(
-	// 			crmhandlers.Search(certsUC))))
+	_ = mainSrv.Shutdown(shCtx)  // перестаёт принимать новые, ждёт активные
+	_ = adminSrv.Shutdown(shCtx) // закрывает admin
 
-	// mux.Handle("/healthz", middleware.WithRequestID(crmhandlers.Healtz(certsUC)))
+	baseLogger.Info("shutdown_end")
 
-	// log.Println("api-gateway listening on :8080")
-	// log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
-// func main_() {
+// conn — *grpc.ClientConn к CRM, который ты уже создаёшь
+func mountAdminHTTP(r *chi.Mux, reg *prometheus.Registry, conn *grpc.ClientConn) {
+	// liveness
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 
-// 	ctx := context.Background()
-// 	ctx = tctx.WithRequestID(ctx, uuid.NewString()) //uuid.NewString()
-// 	ctx = tctx.WithIdempotencyKey(ctx, "idempotency-key-454354-454-34543-4535")
+	// readiness: канал к CRM должен быть Ready
+	r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		state := conn.GetState()
+		// обычно ждём именно Ready; Idle/Connecting — считаем «ещё не готов»
+		if state != connectivity.Ready {
+			http.Error(w, "crm grpc not ready: "+state.String(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 
-// 	crmClient, err := clients.NewCRMClient(ctx, "localhost:50051")
-// 	if err != nil {
-// 		panic("cant create crm client")
-// 	}
-
-// 	req := &crmpb.SearchCertificatesRequest{
-// 		Q: grpcx.S(ptr.To("Сертификат")),
-// 		// …
-// 		Page:      int32(0),
-// 		PerPage:   int32(201),
-// 		CreatedTo: grpcx.TS(ptr.To(time.Now())),
-// 	}
-
-// 	resp, err := crmClient.Certs.SearchCertificates(ctx, req)
-
-// 	fmt.Printf("hallo, %+v\n %+v", resp, err)
-// }
+	// метрики уже смонтированы у тебя, оставляем как есть
+	r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+}

@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"crypto/tls"
+	"errors"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
@@ -14,69 +19,245 @@ import (
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 
 	crmmetrics "github.com/YanMak/ecommerce/v2/services/crm/internal/metrics"
+
+	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
 )
 
-func runGRPC(addr string, pool *pgxpool.Pool, cols *prom.Collectors, logger *zap.Logger, crmM *crmmetrics.CRM) error {
-	lis, err := net.Listen("tcp", addr)
+func serverTLSCreds() (grpc.ServerOption, error) {
+	certFile := getenv("TLS_CERT_FILE", "/etc/enterprise/tls/crm/crm.pem")
+	keyFile := getenv("TLS_KEY_FILE", "/etc/enterprise/tls/crm/crm.key")
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	s := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			grpcx.UnaryServerMetaInterceptor,
-			// тут позже можно добавить лог/метрики/рековери-интерсепторы
-			grpcx.UnaryServerZapLogger(logger),
-			grpcx.UnaryServerMetricsInterceptor(cols),
-		),
-		grpc.ChainStreamInterceptor(
-			grpcx.StreamServerMetaInterceptor, // если будут streaming RPC
-		),
-	)
-	uc := usecase.NewCertificatesUC(pool, crmM)
-	crmpb.RegisterCertificatesServer(s, grpcin.NewCertificatesServer(uc))
-
-	return s.Serve(lis)
+	tlsCfg := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+		// ALPN h2 gRPC добавит сам через credentials.NewTLS
+	}
+	return grpc.Creds(credentials.NewTLS(tlsCfg)), nil
 }
 
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+// func runGRPC(addr string, pool *pgxpool.Pool, cols *prom.Collectors, logger *zap.Logger, crmM *crmmetrics.CRM) error {
+// 	lis, err := net.Listen("tcp", addr)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	s := grpc.NewServer(
+// 		grpc.ChainUnaryInterceptor(
+// 			grpcx.UnaryServerMetaInterceptor,
+// 			// тут позже можно добавить лог/метрики/рековери-интерсепторы
+// 			grpcx.UnaryServerZapLogger(logger),
+// 			grpcx.UnaryServerMetricsInterceptor(cols),
+// 		),
+// 		grpc.ChainStreamInterceptor(
+// 			grpcx.StreamServerMetaInterceptor, // если будут streaming RPC
+// 		),
+// 	)
+// 	uc := usecase.NewCertificatesUC(pool, crmM)
+// 	crmpb.RegisterCertificatesServer(s, grpcin.NewCertificatesServer(uc))
+
+// 	return s.Serve(lis)
+// }
+
 func main() {
+	grpcAddr := cfg.Str("GRPC_ADDR", ":50051")
+	adminAddr := cfg.Str("ADMIN_ADDR", ":8081")
+	shutdownTO := cfg.Dur("SHUTDOWN_TIMEOUT", 10*time.Second)
+	drainDelay := cfg.Dur("DRAIN_DELAY", 2*time.Second) // короткая пауза на дренаж
+	drainTO := cfg.Dur("DRAIN_TIMEOUT", 8*time.Second)  // максимум на дренаж gRPC
 
+	// ---- Pgx
 	dsn := "postgres://postgres:postgres@localhost:5432/crm?sslmode=disable"
-
 	ctx := context.Background()
-
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		log.Fatal("pgxpool:", err)
 	}
 	defer pool.Close()
 
-	//metrics
+	// ---- telemetry
 	reg, cols := prom.New()
 	crmM := crmmetrics.Register(reg)
-
 	base, _ := tlog.NewProduction()
-	base = base.With(zap.String("service", "crm"), zap.String("env", os.Getenv("ENV")))
+	base = base.With(
+		zap.String("service", "crm"),
+		zap.String("env", os.Getenv("ENV")),
+	)
+	defer base.Sync()
 
-	go func() {
-		mux := chi.NewRouter()
-		mux.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-		_ = http.ListenAndServe(":8081", mux)
-	}()
+	// ---- usecases
+	uc := usecase.NewCertificatesUC(pool, crmM)
 
-	err = runGRPC(":50051", pool, cols, base, crmM)
+	// ---- readiness flag
+	var ready atomic.Bool
+	ready.Store(true)
+
+	// ---- TLS options
+	srvTLSOpt, err := serverTLSCreds()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("hallo")
+	// ---- gRPC health
+	hs := health.NewServer()
+
+	// ---- gRPC server + interceptors (meta → ctx, request-logger, metrics)
+	s := grpc.NewServer(
+		srvTLSOpt,
+		grpc.ChainUnaryInterceptor(
+			grpcx.UnaryServerMetaInterceptor,
+			// тут позже можно добавить лог/метрики/рековери-интерсепторы
+			grpcx.UnaryServerZapLogger(base),
+			grpcx.UnaryServerMetricsInterceptor(cols),
+		),
+		grpc.ChainStreamInterceptor(
+			grpcx.StreamServerMetaInterceptor, // если будут streaming RPC
+		),
+	)
+	crmpb.RegisterCertificatesServer(s, grpcin.NewCertificatesServer(uc))
+	grpc_health_v1.RegisterHealthServer(s, hs)
+	// отмечаем как готовые (общий и целевой сервис)
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	hs.SetServingStatus(crmpb.Certificates_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
+
+	////////////////
+	// HTTP admin
+	admin := chi.NewRouter()
+	//bindAdminHTTP(admin, pool, reg)
+	// /livez — процесс жив
+	admin.Get("/livez", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	// /readyz — готов принимать трафик
+	admin.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if !ready.Load() {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		// опционально: быстрый ping БД
+		c, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
+		defer cancel()
+		if err := pool.Ping(c); err != nil {
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	// уже существующий экспорт метрик
+	admin.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	adminSrv := &http.Server{Addr: adminAddr, Handler: admin}
+	/////////////
+
+	// run gRPC
+	errCh := make(chan error, 2)
+	go func() {
+		lis, err := net.Listen("tcp", grpcAddr)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		base.Info("grpc_listen", zap.String("addr", grpcAddr))
+		if err := s.Serve(lis); err != nil {
+			errCh <- err
+		}
+	}()
+	// run admin
+	go func() {
+		base.Info("admin_listen", zap.String("addr", adminAddr))
+		if err := adminSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	// graceful
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case <-ctx.Done():
+		base.Info("shutdown_begin")
+	case err := <-errCh:
+		base.Error("server_exit", zap.Error(err))
+	}
+
+	// 1) снимаем готовность и health — как у тебя было
+	ready.Store(false)
+	hs.Shutdown()
+	time.Sleep(drainDelay) // короткая пауза, чтобы LB/ingress выпилили инстанс
+
+	// 2) запускаем graceful в горутине и ждём с таймаутом
+	done := make(chan struct{})
+	go func() {
+		s.GracefulStop() // перестаёт принимать новые RPC, ждёт активные
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		base.Info("grpc_graceful_stop_done")
+	case <-time.After(drainTO):
+		base.Warn("grpc_graceful_timeout_force_stop", zap.Duration("drain_timeout", drainTO))
+		s.Stop() // форс-закрытие: активные RPC обрываются с UNAVAILABLE
+	}
+
+	// 3) закрываем admin http с дедлайном (можно тем же shCtx)
+	shCtx, cancel := context.WithTimeout(context.Background(), shutdownTO)
+	defer cancel()
+	_ = adminSrv.Shutdown(shCtx)
+
+	// 4) ресурсы
+	pool.Close()
+	base.Info("shutdown_end")
+
+}
+
+func bindAdminHTTP(r *chi.Mux, pool *pgxpool.Pool, reg *prometheus.Registry) {
+
+	// liveness: просто жив
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	// readiness: быстрый ping БД
+	r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
+		defer cancel()
+
+		if err := pool.Ping(ctx); err != nil {
+			http.Error(w, "db not ready: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	// уже существующий экспорт метрик
+	r.Method("GET", "/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 }
