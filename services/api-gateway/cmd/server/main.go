@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +23,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
@@ -34,6 +38,36 @@ import (
 
 	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/dto"
 )
+
+// getenv с дефолтом
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+// Создаём TLS-креды клиента для подключения к CRM
+func clientCredsToCRM() (grpc.DialOption, error) {
+	caFile := getenv("CRM_TLS_CA_FILE", "/etc/enterprise/tls/ca/ca.pem")
+	caPEM, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("read CA file: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("append CA PEM failed")
+	}
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+		// ServerName можно не указывать: Go возьмёт хост из адреса Dial (localhost или 10.0.12.20)
+	}
+	if sni := os.Getenv("CRM_TLS_SERVER_NAME"); sni != "" {
+		tlsCfg.ServerName = sni
+	}
+	return grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)), nil
+}
 
 func main() {
 	// ---- config
