@@ -24,7 +24,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
@@ -50,6 +49,9 @@ func getenv(k, def string) string {
 // Создаём TLS-креды клиента для подключения к CRM
 func clientCredsToCRM() (grpc.DialOption, error) {
 	caFile := getenv("CRM_TLS_CA_FILE", "/etc/enterprise/tls/ca/ca.pem")
+	cliCertFile := getenv("GATEWAY_TLS_CERT_FILE", "/etc/enterprise/tls/gateway/gateway.pem")
+	cliKeyFile := getenv("GATEWAY_TLS_KEY_FILE", "/etc/enterprise/tls/gateway/gateway.key")
+
 	caPEM, err := os.ReadFile(caFile)
 	if err != nil {
 		return nil, fmt.Errorf("read CA file: %w", err)
@@ -58,10 +60,17 @@ func clientCredsToCRM() (grpc.DialOption, error) {
 	if !roots.AppendCertsFromPEM(caPEM) {
 		return nil, fmt.Errorf("append CA PEM failed")
 	}
+	// клиентский сертификат (для mTLS)
+	cliCert, err := tls.LoadX509KeyPair(cliCertFile, cliKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load client cert: %w", err)
+	}
+
 	tlsCfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		RootCAs:    roots,
 		// ServerName можно не указывать: Go возьмёт хост из адреса Dial (localhost или 10.0.12.20)
+		Certificates: []tls.Certificate{cliCert},
 	}
 	if sni := os.Getenv("CRM_TLS_SERVER_NAME"); sni != "" {
 		tlsCfg.ServerName = sni
@@ -93,9 +102,16 @@ func main() {
 	)
 
 	// ---- gRPC
+	tlsDialOpt, err := clientCredsToCRM()
+	if err != nil {
+		log.Fatal(err)
+	}
+	//fmt.Println("temporarily while comment passing it to gprc opts ", tlsDialOpt)
+
 	conn, err := grpc.NewClient(
 		"localhost:50051",
-		grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
+		tlsDialOpt,
+		//grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
 		grpc.WithChainUnaryInterceptor(
 			grpcx.UnaryClientMetaInterceptor,           // прокидка request-id/idempotency
 			grpcx.UnaryClientMetricsInterceptor(cols)), // ← метрики клиента

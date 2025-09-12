@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -39,6 +41,17 @@ import (
 func serverTLSCreds() (grpc.ServerOption, error) {
 	certFile := getenv("TLS_CERT_FILE", "/etc/enterprise/tls/crm/crm.pem")
 	keyFile := getenv("TLS_KEY_FILE", "/etc/enterprise/tls/crm/crm.key")
+	clientCA := getenv("TLS_CLIENT_CA_FILE", "/etc/enterprise/tls/ca/ca.pem")
+
+	// Пул доверенных CA для проверки клиентских сертификатов
+	caPEM, err := os.ReadFile(clientCA)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("append CA failed")
+	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -49,6 +62,8 @@ func serverTLSCreds() (grpc.ServerOption, error) {
 		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{cert},
 		// ALPN h2 gRPC добавит сам через credentials.NewTLS
+		ClientCAs:  pool,
+		ClientAuth: tls.RequireAndVerifyClientCert, // ← включаем mTL
 	}
 	return grpc.Creds(credentials.NewTLS(tlsCfg)), nil
 }
@@ -121,6 +136,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	//fmt.Println("temporarily while comment passing it to gprc opts ", srvTLSOpt)
 
 	// ---- gRPC health
 	hs := health.NewServer()
