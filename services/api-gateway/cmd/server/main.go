@@ -20,12 +20,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
+	"github.com/YanMak/ecommerce/v2/pkg/otelx"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
@@ -100,6 +102,14 @@ func main() {
 		zap.String("env", os.Getenv("ENV")),
 		zap.String("version", "buildVersionXXX"),
 	)
+	// OTel: инициализация трейсинга (экспорт в OTLP endpoint)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	shutdown, err := otelx.InitTracer(ctx, "api-gateway")
+	if err != nil {
+		panic(err)
+	}
+	defer shutdown(context.Background())
 
 	// ---- gRPC
 	tlsDialOpt, err := clientCredsToCRM()
@@ -112,6 +122,7 @@ func main() {
 		"localhost:50051",
 		tlsDialOpt,
 		//grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // ← OTel client-span + прокат trace_id
 		grpc.WithChainUnaryInterceptor(
 			grpcx.UnaryClientMetaInterceptor,           // прокидка request-id/idempotency
 			grpcx.UnaryClientMetricsInterceptor(cols)), // ← метрики клиента

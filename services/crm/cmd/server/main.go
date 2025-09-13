@@ -16,6 +16,7 @@ import (
 	"time"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
+	"github.com/YanMak/ecommerce/v2/pkg/otelx"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 	grpcin "github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/inbound/grpc"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
@@ -36,6 +37,8 @@ import (
 	crmmetrics "github.com/YanMak/ecommerce/v2/services/crm/internal/metrics"
 
 	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
+
+	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 func serverTLSCreds() (grpc.ServerOption, error) {
@@ -123,6 +126,13 @@ func main() {
 		zap.String("env", os.Getenv("ENV")),
 	)
 	defer base.Sync()
+	// OTEL {
+	shutdown, err := otelx.InitTracer(ctx, "crm")
+	if err != nil {
+		panic(err)
+	}
+	defer shutdown(context.Background())
+	// }
 
 	// ---- usecases
 	uc := usecase.NewCertificatesUC(pool, crmM)
@@ -144,6 +154,7 @@ func main() {
 	// ---- gRPC server + interceptors (meta → ctx, request-logger, metrics)
 	s := grpc.NewServer(
 		srvTLSOpt,
+		grpc.StatsHandler(otelgrpc.NewServerHandler()), // ← создаёт серверные спаны для всех RPC
 		grpc.ChainUnaryInterceptor(
 			grpcx.UnaryServerMetaInterceptor,
 			// тут позже можно добавить лог/метрики/рековери-интерсепторы
