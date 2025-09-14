@@ -38,6 +38,10 @@ import (
 	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
 
 	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/dto"
+
+	otelhttp "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	httpmw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
 )
 
 // getenv с дефолтом
@@ -142,6 +146,8 @@ func main() {
 		middleware.Recoverer,
 		//middleware.Logger,
 		middleware.Compress(5),
+		// оборачиваем весь chi-роутер → появится HTTP SERVER-span на каждый запрос
+		httpmw.SpanNameFromChiRoute(),
 		httpmdw.WithRequestID,
 		httpmdw.WithIdempotencyKey,
 		httpmdw.WithZapLogger(baseLogger),
@@ -149,8 +155,11 @@ func main() {
 	)
 
 	mainSrv := &http.Server{
-		Addr:              httpAddr,
-		Handler:           r,
+		Addr: httpAddr,
+		//Handler:           r,
+		// оборачиваем весь chi-роутер → появится HTTP SERVER-span на каждый запрос
+		// otelhttp создаёт HTTP SERVER-спан; наш chi-middleware затем переименует его по паттерну
+		Handler:           otelhttp.NewHandler(r, "api-gateway-http"),
 		ReadTimeout:       readTO,
 		ReadHeaderTimeout: readTO,
 		WriteTimeout:      writeTO,
