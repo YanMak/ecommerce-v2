@@ -39,6 +39,8 @@ import (
 	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
 
 	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
+	otelpgx "github.com/exaring/otelpgx"
 )
 
 func serverTLSCreds() (grpc.ServerOption, error) {
@@ -111,10 +113,26 @@ func main() {
 	// ---- Pgx
 	dsn := "postgres://postgres:postgres@localhost:5432/crm?sslmode=disable"
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
+	// pool, err := pgxpool.New(ctx, dsn)
+	// if err != nil {
+	// 	log.Fatal("pgxpool:", err)
+	// }
+	// Разбираем конфиг пула и включаем OTel-трейсер для pgx (db-спаны):
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		log.Fatal("pgxpool:", err)
+		log.Fatal("pgxpool ParseConfig:", err)
 	}
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(
+		// В проде лучше не класть полный SQL в атрибуты:
+		otelpgx.WithDisableSQLStatementInAttributes(),
+		// Если нужно в деве — можно временно показать параметры:
+		// otelpgx.WithIncludeQueryParameters(),
+	)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		log.Fatal("pgxpool NewWithConfig:", err)
+	}
+
 	defer pool.Close()
 
 	// ---- telemetry

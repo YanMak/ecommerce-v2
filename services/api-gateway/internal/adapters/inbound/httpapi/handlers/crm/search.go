@@ -1,6 +1,7 @@
 package crmhandlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -22,7 +23,11 @@ func Healtz(uc *usecase.CertificatesUC) http.HandlerFunc {
 func Search(uc *usecase.CertificatesUC) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		d, _ := bind.DTO[dto.CRMSearchDTO](r) // валидный DTO уже в контексте
-		resp, err := uc.Search(r.Context(), d.ToParams())
+
+		// Е2Е дедлайн на запрос (HTTP → gRPC → CRM → БД)
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second) // можно вынести в ENV
+		defer cancel()
+		resp, err := uc.Search(ctx, d.ToParams())
 		if err != nil {
 			render.GRPCError(w, r, err)
 			return

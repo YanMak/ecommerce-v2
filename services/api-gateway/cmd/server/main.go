@@ -42,6 +42,9 @@ import (
 	otelhttp "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	httpmw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
+
+	"github.com/YanMak/ecommerce/v2/pkg/redisx"
+	redis "github.com/redis/go-redis/v9"
 )
 
 // getenv с дефолтом
@@ -122,10 +125,25 @@ func main() {
 	}
 	//fmt.Println("temporarily while comment passing it to gprc opts ", tlsDialOpt)
 
+	// Retry-политика только для идемпотентного метода SearchCertificates
+	const sc = `{
+	  "methodConfig": [{
+	    "name": [{"service":"crm.certificates.v1.Certificates","method":"SearchCertificates"}],
+	    "retryPolicy": {
+	      "MaxAttempts": 3,
+	      "InitialBackoff": "0.1s",
+	      "MaxBackoff": "1s",
+	      "BackoffMultiplier": 2.0,
+	      "RetryableStatusCodes": ["UNAVAILABLE","DEADLINE_EXCEEDED"]
+	    }
+	  }]
+	}`
+
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		tlsDialOpt,
 		//grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
+		grpc.WithDefaultServiceConfig(sc),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // ← OTel client-span + прокат trace_id
 		grpc.WithChainUnaryInterceptor(
 			grpcx.UnaryClientMetaInterceptor,           // прокидка request-id/idempotency
@@ -135,6 +153,13 @@ func main() {
 		log.Fatal(err)
 	}
 	defer conn.Close()
+
+	// ---- Redis клиент
+	var rdb *redis.Client = redisx.NewFromEnv()
+	defer rdb.Close()
+	if err := redisx.ReadyCheck(context.Background(), rdb); err != nil {
+		baseLogger.Warn("redis_ping_failed", zap.Error(err))
+	}
 
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
@@ -172,7 +197,7 @@ func main() {
 
 	// ---- HTTP admin router
 	admin := chi.NewRouter()
-	mountAdminHTTP(admin, reg, conn)
+	mountAdminHTTP(admin, reg, conn, rdb)
 	adminSrv := &http.Server{
 		Addr:              adminAddr,
 		Handler:           admin,
@@ -217,7 +242,7 @@ func main() {
 }
 
 // conn — *grpc.ClientConn к CRM, который ты уже создаёшь
-func mountAdminHTTP(r *chi.Mux, reg *prometheus.Registry, conn *grpc.ClientConn) {
+func mountAdminHTTP(r *chi.Mux, reg *prometheus.Registry, conn *grpc.ClientConn, rdb *redis.Client) {
 	// liveness
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -230,6 +255,11 @@ func mountAdminHTTP(r *chi.Mux, reg *prometheus.Registry, conn *grpc.ClientConn)
 		// обычно ждём именно Ready; Idle/Connecting — считаем «ещё не готов»
 		if state != connectivity.Ready {
 			http.Error(w, "crm grpc not ready: "+state.String(), http.StatusServiceUnavailable)
+			return
+		}
+		// плюс Redis: быстрый ping с коротким таймаутом
+		if err := redisx.ReadyCheck(r.Context(), rdb); err != nil {
+			http.Error(w, "redis not ready: "+err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
