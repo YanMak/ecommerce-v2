@@ -164,6 +164,13 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
+	// где-то перед маршрутами:
+	idemCfg := httpmdw.IdemConfig{
+		TTL:          cfg.Dur("IDEM_TTL", 30*time.Minute),
+		LockTTL:      cfg.Dur("IDEM_LOCK_TTL", 60*time.Second),
+		MaxBodyBytes: cfg.Int64("IDEM_MAX_BODY", 1<<20), // 1MB
+	}
+
 	// ---- HTTP main router
 	r := chi.NewRouter()
 	r.Use(
@@ -191,10 +198,13 @@ func main() {
 		IdleTimeout:       idleTO,
 	}
 	r.With(
+		httpmw.InFlight(10),
+		// rate limit: напр., 100 запросов за 60s на IP+маршрут
+		httpmdw.RateLimitFixedWindow(rdb, cfg.Int("RL_SEARCH_LIMIT", 1), cfg.Dur("RL_SEARCH_WINDOW", 10*time.Second), nil),
 		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
 		// bind.WithDTO(BindHeaders), bind.WithDTO(BindCookies), bind.WithDTO(BindPath) — добавим по мере надобности
 	).Get("/crm/certificates/search",
-		httpmw.InFlight(50)(crmhandlers.Search(certsUC)),
+		crmhandlers.Search(certsUC),
 	)
 
 	// ---- HTTP admin router

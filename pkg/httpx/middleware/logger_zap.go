@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"net"
 	"net/http"
 	"time"
 
@@ -65,13 +64,4 @@ func WithZapLogger(base *zap.Logger) func(http.Handler) http.Handler {
 			_ = reqLog
 		})
 	}
-}
-
-func clientIP(r *http.Request) string {
-	// очень простой вариант; при наличии прокси можно смотреть X-Forwarded-For
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
