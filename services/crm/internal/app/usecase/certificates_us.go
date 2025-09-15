@@ -38,6 +38,10 @@ func (uc *CertificatesUC) Search(
 	log := tlog.FromContext(ctx) // достали *zap.Logger из контекста
 	start := time.Now()
 
+	if dl, ok := ctx.Deadline(); ok {
+		log.Info("crm.rpc.deadline", zap.Duration("left", time.Until(dl)))
+	}
+
 	// функция, которую будем ретраить
 	run := func(ctx context.Context) error {
 		return tx.InTx(ctx, uc.pool, func(ctx context.Context, dbtx pgx.Tx) error {
@@ -59,7 +63,8 @@ func (uc *CertificatesUC) Search(
 		retry.Only(errkit.IsTransient),
 		retry.WithMaxAttempts(3),
 		retry.WithBaseDelay(100*time.Millisecond),
-		retry.WithMaxDelay(2*time.Second),
+		//retry.WithMaxDelay(2*time.Second),
+		retry.WithMaxDelay(10*time.Second),
 		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
 			// сработает для attempt=1,2,... на каждую ошибку перед следующей попыткой
 			log.Warn("retry_attempt",

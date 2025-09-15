@@ -193,7 +193,9 @@ func main() {
 	r.With(
 		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
 		// bind.WithDTO(BindHeaders), bind.WithDTO(BindCookies), bind.WithDTO(BindPath) — добавим по мере надобности
-	).Get("/crm/certificates/search", crmhandlers.Search(certsUC))
+	).Get("/crm/certificates/search",
+		httpmw.InFlight(50)(crmhandlers.Search(certsUC)),
+	)
 
 	// ---- HTTP admin router
 	admin := chi.NewRouter()

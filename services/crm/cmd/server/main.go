@@ -21,6 +21,7 @@ import (
 	grpcin "github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/inbound/grpc"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -113,22 +114,60 @@ func main() {
 	// ---- Pgx
 	dsn := "postgres://postgres:postgres@localhost:5432/crm?sslmode=disable"
 	ctx := context.Background()
-	// pool, err := pgxpool.New(ctx, dsn)
+
+	//v1
+	// // Разбираем конфиг пула и включаем OTel-трейсер для pgx (db-спаны):
+	// cfg, err := pgxpool.ParseConfig(dsn)
 	// if err != nil {
-	// 	log.Fatal("pgxpool:", err)
+	// 	log.Fatal("pgxpool ParseConfig:", err)
 	// }
-	// Разбираем конфиг пула и включаем OTel-трейсер для pgx (db-спаны):
-	cfg, err := pgxpool.ParseConfig(dsn)
+	// cfg.ConnConfig.Tracer = otelpgx.NewTracer(
+	// 	// В проде лучше не класть полный SQL в атрибуты:
+	// 	otelpgx.WithDisableSQLStatementInAttributes(),
+	// 	// Если нужно в деве — можно временно показать параметры:
+	// 	// otelpgx.WithIncludeQueryParameters(),
+	// )
+	// pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	// v2
+	// ---- Pgx
+	cfgPg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		log.Fatal("pgxpool ParseConfig:", err)
 	}
-	cfg.ConnConfig.Tracer = otelpgx.NewTracer(
-		// В проде лучше не класть полный SQL в атрибуты:
-		otelpgx.WithDisableSQLStatementInAttributes(),
-		// Если нужно в деве — можно временно показать параметры:
-		// otelpgx.WithIncludeQueryParameters(),
+	// Трейсинг запросов (db-спаны)
+	cfgPg.ConnConfig.Tracer = otelpgx.NewTracer(
+		otelpgx.WithDisableSQLStatementInAttributes(), // прод-безопасно
 	)
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	// Жёсткий предел на длительность SQL внутри PG (дополнительно к ctx):
+	// читаем TTL из ENV: DB_STATEMENT_TIMEOUT (напр. "2s").
+	stmtTO := cfg.Dur("DB_STATEMENT_TIMEOUT", 20*time.Second)
+	if stmtTO > 0 {
+		cfgPg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+
+			// env examples
+			// DB_STATEMENT_TIMEOUT=2s
+			// DB_LOCK_TIMEOUT=500ms
+			// DB_IDLE_IN_TX_TIMEOUT=15s
+
+			// PG принимает 'Nms' / 'Ns' как literal
+			_, err := c.Exec(ctx, fmt.Sprintf("SET statement_timeout = '%dms'", stmtTO.Milliseconds()))
+
+			// (опционально) дополнительные предохранители:
+			if lockTO := cfg.Dur("DB_LOCK_TIMEOUT", 0); lockTO > 0 {
+				if _, err := c.Exec(ctx, fmt.Sprintf("SET lock_timeout = '%dms'", lockTO.Milliseconds())); err != nil {
+					return err
+				}
+			}
+			if idleTxTO := cfg.Dur("DB_IDLE_IN_TX_TIMEOUT", 0); idleTxTO > 0 {
+				if _, err := c.Exec(ctx, fmt.Sprintf("SET idle_in_transaction_session_timeout = '%dms'", idleTxTO.Milliseconds())); err != nil {
+					return err
+				}
+			}
+
+			return err
+		}
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfgPg)
 	if err != nil {
 		log.Fatal("pgxpool NewWithConfig:", err)
 	}
