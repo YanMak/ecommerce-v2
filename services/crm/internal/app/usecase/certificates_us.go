@@ -67,7 +67,7 @@ func (uc *CertificatesUC) Search(
 		retry.WithMaxDelay(10*time.Second),
 		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
 			// сработает для attempt=1,2,... на каждую ошибку перед следующей попыткой
-			log.Warn("retry_attempt",
+			log.Warn("search_retry_attempt",
 				zap.String("op", "crm.search"),
 				zap.Int("attempt", attempt),
 				zap.Error(err),

@@ -10,4 +10,7 @@ import (
 // Контракт репозитория
 type CertificatesRepo interface {
 	Search(ctx context.Context, f contracts.SearchFilter, p paging.OffsetParams) (rows []contracts.CertificateRow, total int64, hasNext bool, err error)
+
+	// NEW:
+	UpsertDocument(ctx context.Context, d contracts.UpsertDocument) error
 }

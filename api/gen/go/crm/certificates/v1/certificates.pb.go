@@ -304,6 +304,127 @@ func (x *SearchCertificatesResponse) GetHasNext() bool {
 	return false
 }
 
+type UpsertDocumentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                            // document id (pk)
+	CertificateId int64                  `protobuf:"varint,2,opt,name=certificate_id,json=certificateId,proto3" json:"certificate_id,omitempty"` // fk to certificate
+	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	UrlMachine    string                 `protobuf:"bytes,4,opt,name=url_machine,json=urlMachine,proto3" json:"url_machine,omitempty"`
+	// опционально: idempotency_key для трассировки/логов
+	IdempotencyKey string `protobuf:"bytes,10,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpsertDocumentRequest) Reset() {
+	*x = UpsertDocumentRequest{}
+	mi := &file_crm_certificates_v1_certificates_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertDocumentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertDocumentRequest) ProtoMessage() {}
+
+func (x *UpsertDocumentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_crm_certificates_v1_certificates_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertDocumentRequest.ProtoReflect.Descriptor instead.
+func (*UpsertDocumentRequest) Descriptor() ([]byte, []int) {
+	return file_crm_certificates_v1_certificates_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UpsertDocumentRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpsertDocumentRequest) GetCertificateId() int64 {
+	if x != nil {
+		return x.CertificateId
+	}
+	return 0
+}
+
+func (x *UpsertDocumentRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *UpsertDocumentRequest) GetUrlMachine() string {
+	if x != nil {
+		return x.UrlMachine
+	}
+	return ""
+}
+
+func (x *UpsertDocumentRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type UpsertDocumentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // echo
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertDocumentResponse) Reset() {
+	*x = UpsertDocumentResponse{}
+	mi := &file_crm_certificates_v1_certificates_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertDocumentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertDocumentResponse) ProtoMessage() {}
+
+func (x *UpsertDocumentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_crm_certificates_v1_certificates_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertDocumentResponse.ProtoReflect.Descriptor instead.
+func (*UpsertDocumentResponse) Descriptor() ([]byte, []int) {
+	return file_crm_certificates_v1_certificates_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *UpsertDocumentResponse) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
 var File_crm_certificates_v1_certificates_proto protoreflect.FileDescriptor
 
 const file_crm_certificates_v1_certificates_proto_rawDesc = "" +
@@ -336,9 +457,20 @@ const file_crm_certificates_v1_certificates_proto_rawDesc = "" +
 	"\x1aSearchCertificatesResponse\x127\n" +
 	"\x04rows\x18\x01 \x03(\v2#.crm.certificates.v1.CertificateRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x19\n" +
-	"\bhas_next\x18\x03 \x01(\bR\ahasNext2\x85\x01\n" +
+	"\bhas_next\x18\x03 \x01(\bR\ahasNext\"\xaa\x01\n" +
+	"\x15UpsertDocumentRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12%\n" +
+	"\x0ecertificate_id\x18\x02 \x01(\x03R\rcertificateId\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12\x1f\n" +
+	"\vurl_machine\x18\x04 \x01(\tR\n" +
+	"urlMachine\x12'\n" +
+	"\x0fidempotency_key\x18\n" +
+	" \x01(\tR\x0eidempotencyKey\"(\n" +
+	"\x16UpsertDocumentResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id2\xf0\x01\n" +
 	"\fCertificates\x12u\n" +
-	"\x12SearchCertificates\x12..crm.certificates.v1.SearchCertificatesRequest\x1a/.crm.certificates.v1.SearchCertificatesResponseBEZCgithub.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1;crmpbb\x06proto3"
+	"\x12SearchCertificates\x12..crm.certificates.v1.SearchCertificatesRequest\x1a/.crm.certificates.v1.SearchCertificatesResponse\x12i\n" +
+	"\x0eUpsertDocument\x12*.crm.certificates.v1.UpsertDocumentRequest\x1a+.crm.certificates.v1.UpsertDocumentResponseBEZCgithub.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1;crmpbb\x06proto3"
 
 var (
 	file_crm_certificates_v1_certificates_proto_rawDescOnce sync.Once
@@ -352,34 +484,38 @@ func file_crm_certificates_v1_certificates_proto_rawDescGZIP() []byte {
 	return file_crm_certificates_v1_certificates_proto_rawDescData
 }
 
-var file_crm_certificates_v1_certificates_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_crm_certificates_v1_certificates_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_crm_certificates_v1_certificates_proto_goTypes = []any{
 	(*SearchCertificatesRequest)(nil),  // 0: crm.certificates.v1.SearchCertificatesRequest
 	(*CertificateRow)(nil),             // 1: crm.certificates.v1.CertificateRow
 	(*SearchCertificatesResponse)(nil), // 2: crm.certificates.v1.SearchCertificatesResponse
-	(*wrapperspb.StringValue)(nil),     // 3: google.protobuf.StringValue
-	(*timestamppb.Timestamp)(nil),      // 4: google.protobuf.Timestamp
-	(*wrapperspb.Int64Value)(nil),      // 5: google.protobuf.Int64Value
-	(*wrapperspb.BoolValue)(nil),       // 6: google.protobuf.BoolValue
+	(*UpsertDocumentRequest)(nil),      // 3: crm.certificates.v1.UpsertDocumentRequest
+	(*UpsertDocumentResponse)(nil),     // 4: crm.certificates.v1.UpsertDocumentResponse
+	(*wrapperspb.StringValue)(nil),     // 5: google.protobuf.StringValue
+	(*timestamppb.Timestamp)(nil),      // 6: google.protobuf.Timestamp
+	(*wrapperspb.Int64Value)(nil),      // 7: google.protobuf.Int64Value
+	(*wrapperspb.BoolValue)(nil),       // 8: google.protobuf.BoolValue
 }
 var file_crm_certificates_v1_certificates_proto_depIdxs = []int32{
-	3,  // 0: crm.certificates.v1.SearchCertificatesRequest.q:type_name -> google.protobuf.StringValue
-	3,  // 1: crm.certificates.v1.SearchCertificatesRequest.inn:type_name -> google.protobuf.StringValue
-	4,  // 2: crm.certificates.v1.SearchCertificatesRequest.created_from:type_name -> google.protobuf.Timestamp
-	4,  // 3: crm.certificates.v1.SearchCertificatesRequest.created_to:type_name -> google.protobuf.Timestamp
-	4,  // 4: crm.certificates.v1.SearchCertificatesRequest.updated_from:type_name -> google.protobuf.Timestamp
-	4,  // 5: crm.certificates.v1.SearchCertificatesRequest.updated_to:type_name -> google.protobuf.Timestamp
-	5,  // 6: crm.certificates.v1.SearchCertificatesRequest.category_id:type_name -> google.protobuf.Int64Value
-	6,  // 7: crm.certificates.v1.SearchCertificatesRequest.opened:type_name -> google.protobuf.BoolValue
-	3,  // 8: crm.certificates.v1.CertificateRow.uf_number:type_name -> google.protobuf.StringValue
-	3,  // 9: crm.certificates.v1.CertificateRow.uf_inn:type_name -> google.protobuf.StringValue
-	4,  // 10: crm.certificates.v1.CertificateRow.created_time:type_name -> google.protobuf.Timestamp
-	4,  // 11: crm.certificates.v1.CertificateRow.updated_time:type_name -> google.protobuf.Timestamp
+	5,  // 0: crm.certificates.v1.SearchCertificatesRequest.q:type_name -> google.protobuf.StringValue
+	5,  // 1: crm.certificates.v1.SearchCertificatesRequest.inn:type_name -> google.protobuf.StringValue
+	6,  // 2: crm.certificates.v1.SearchCertificatesRequest.created_from:type_name -> google.protobuf.Timestamp
+	6,  // 3: crm.certificates.v1.SearchCertificatesRequest.created_to:type_name -> google.protobuf.Timestamp
+	6,  // 4: crm.certificates.v1.SearchCertificatesRequest.updated_from:type_name -> google.protobuf.Timestamp
+	6,  // 5: crm.certificates.v1.SearchCertificatesRequest.updated_to:type_name -> google.protobuf.Timestamp
+	7,  // 6: crm.certificates.v1.SearchCertificatesRequest.category_id:type_name -> google.protobuf.Int64Value
+	8,  // 7: crm.certificates.v1.SearchCertificatesRequest.opened:type_name -> google.protobuf.BoolValue
+	5,  // 8: crm.certificates.v1.CertificateRow.uf_number:type_name -> google.protobuf.StringValue
+	5,  // 9: crm.certificates.v1.CertificateRow.uf_inn:type_name -> google.protobuf.StringValue
+	6,  // 10: crm.certificates.v1.CertificateRow.created_time:type_name -> google.protobuf.Timestamp
+	6,  // 11: crm.certificates.v1.CertificateRow.updated_time:type_name -> google.protobuf.Timestamp
 	1,  // 12: crm.certificates.v1.SearchCertificatesResponse.rows:type_name -> crm.certificates.v1.CertificateRow
 	0,  // 13: crm.certificates.v1.Certificates.SearchCertificates:input_type -> crm.certificates.v1.SearchCertificatesRequest
-	2,  // 14: crm.certificates.v1.Certificates.SearchCertificates:output_type -> crm.certificates.v1.SearchCertificatesResponse
-	14, // [14:15] is the sub-list for method output_type
-	13, // [13:14] is the sub-list for method input_type
+	3,  // 14: crm.certificates.v1.Certificates.UpsertDocument:input_type -> crm.certificates.v1.UpsertDocumentRequest
+	2,  // 15: crm.certificates.v1.Certificates.SearchCertificates:output_type -> crm.certificates.v1.SearchCertificatesResponse
+	4,  // 16: crm.certificates.v1.Certificates.UpsertDocument:output_type -> crm.certificates.v1.UpsertDocumentResponse
+	15, // [15:17] is the sub-list for method output_type
+	13, // [13:15] is the sub-list for method input_type
 	13, // [13:13] is the sub-list for extension type_name
 	13, // [13:13] is the sub-list for extension extendee
 	0,  // [0:13] is the sub-list for field type_name
@@ -396,7 +532,7 @@ func file_crm_certificates_v1_certificates_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_crm_certificates_v1_certificates_proto_rawDesc), len(file_crm_certificates_v1_certificates_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

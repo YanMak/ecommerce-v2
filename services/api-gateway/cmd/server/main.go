@@ -166,9 +166,11 @@ func main() {
 
 	// где-то перед маршрутами:
 	idemCfg := httpmdw.IdemConfig{
-		TTL:          cfg.Dur("IDEM_TTL", 30*time.Minute),
-		LockTTL:      cfg.Dur("IDEM_LOCK_TTL", 60*time.Second),
-		MaxBodyBytes: cfg.Int64("IDEM_MAX_BODY", 1<<20), // 1MB
+		TTL:              cfg.Dur("IDEM_TTL", 30*time.Minute),
+		LockTTL:          cfg.Dur("IDEM_LOCK_TTL", 60*time.Second),
+		MaxBodyBytes:     cfg.Int64("IDEM_MAX_BODY", 1<<20),
+		WaitForResult:    cfg.Dur("IDEM_WAIT", 500*time.Millisecond), // включили короткое ожидание
+		WaitPollInterval: cfg.Dur("IDEM_WAIT_POLL", 100*time.Millisecond),
 	}
 
 	// ---- HTTP main router
@@ -181,7 +183,7 @@ func main() {
 		// оборачиваем весь chi-роутер → появится HTTP SERVER-span на каждый запрос
 		httpmw.SpanNameFromChiRoute(),
 		httpmdw.WithRequestID,
-		httpmdw.WithIdempotencyKey,
+		//httpmdw.WithIdempotencyKey,
 		httpmdw.WithZapLogger(baseLogger),
 		httpmdw.WithMetricsChi(cols),
 	)
@@ -206,6 +208,13 @@ func main() {
 	).Get("/crm/certificates/search",
 		crmhandlers.Search(certsUC),
 	)
+
+	r.With(
+		middleware.StripSlashes,
+		httpmdw.WithRequestID,
+		// идемпотентность ТОЛЬКО на мутирующие
+		httpmdw.Idempotency(rdb, idemCfg),
+	).Post("/crm/documents/upsert", crmhandlers.UpsertDocument(crmClient))
 
 	// ---- HTTP admin router
 	admin := chi.NewRouter()

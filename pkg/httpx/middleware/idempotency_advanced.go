@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,31 +17,43 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Параметры: TTL ответа и TTL блокировки. maxBodyBytes — лимит читаемого тела (чтобы не ушатать память).
+// Конфиг идемпотентности.
 type IdemConfig struct {
-	TTL          time.Duration
-	LockTTL      time.Duration
-	MaxBodyBytes int64 // напр. 1<<20 (1MB)
+	TTL              time.Duration // TTL кэша ответа (например, 30m)
+	LockTTL          time.Duration // TTL блокировки (должен покрывать worst-case времени операции, напр. 60s)
+	MaxBodyBytes     int64         // лимит буферизации тела запроса (1MB по умолчанию)
+	WaitForResult    time.Duration // ПРИ конфликте: сколько ждём появления кэша вместо 409 (напр. 500ms). 0 = сразу 409
+	WaitPollInterval time.Duration // шаг опроса кэша при ожидании (напр. 100ms)
 }
 
 type cachedResp struct {
 	Status      int               `json:"status"`
 	ContentType string            `json:"content_type"`
-	Headers     map[string]string `json:"headers,omitempty"` // по минимуму
+	Headers     map[string]string `json:"headers,omitempty"`
 	Body        []byte            `json:"body"`
 	Fingerprint string            `json:"fp"`
 }
 
-// Для POST/PUT/PATCH с заголовком Idempotency-Key:
-// 1) пытаемся отдать из кеша
-// 2) если нет — ставим lock; при гонке 409
-// 3) выполняем хендлер, сохраняем (2xx) в кеш, снимаем lock
+const luaUnlockScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+else
+  return 0
+end
+`
+
+// Idempotency — мидлварь идемпотентности для мутирующих методов (POST/PUT/PATCH/DELETE).
+// Ключ берётся из заголовка "Idempotency-Key".
 func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Handler {
 	if rdb == nil || cfg.TTL <= 0 || cfg.LockTTL <= 0 {
+		// no-op
 		return func(next http.Handler) http.Handler { return next }
 	}
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = 1 << 20 // 1MB
+	}
+	if cfg.WaitPollInterval <= 0 {
+		cfg.WaitPollInterval = 100 * time.Millisecond
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -56,49 +69,96 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 			}
 
 			route := routePatternOrPath(r)
-			fp, body, ok := fingerprintRequest(r, cfg.MaxBodyBytes) // body для восстановления r.Body
-			if ok {
-				r.Body = io.NopCloser(bytes.NewReader(body)) // восстановим, чтобы downstream прочитал
-			}
-
 			dataKey := "idem:data:" + route + ":" + r.Method + ":" + key
 			lockKey := "idem:lock:" + route + ":" + r.Method + ":" + key
 
-			// 0) Быстрый контекст для Redis
-			rlim := 120 * time.Millisecond
-			ctx, cancel := context.WithTimeout(r.Context(), rlim)
-			defer cancel()
-
-			// 1) Попытка отдать из кеша
-			if got := tryGetCached(ctx, rdb, dataKey); got != nil {
-				// Проверим, что отпечаток тот же (защита от повторного использования ключа с другим телом)
-				if got.Fingerprint == fp || fp == "" {
-					writeCached(w, key, got)
-					if span := trace.SpanFromContext(r.Context()); span != nil {
-						span.SetAttributes(attribute.Bool("idem.cache_hit", true))
-					}
-					return
-				}
-				// Иначе — конфликт: ключ повторно с другим содержимым
-				http.Error(w, "Idempotency-Key conflict", http.StatusConflict)
-				return
+			// Буферизуем тело (для отпечатка) и восстанавливаем r.Body
+			fp, body, okBody := fingerprintRequest(r, cfg.MaxBodyBytes)
+			if okBody {
+				r.Body = io.NopCloser(bytes.NewReader(body))
 			}
 
-			// 2) Пробуем взять lock
-			okLock, _ := rdb.SetNX(ctx, lockKey, "1", cfg.LockTTL).Result()
-			if !okLock {
-				// Возможно, первая операция ещё в процессе. Можно вернуть 409 с Retry-After.
+			// Короткий контекст для операций Redis
+			//rlim := 120 * time.Millisecond
+			rlim := 1200 * time.Second
+
+			// 1) Попытка отдать из кэша
+			{
+				ctx1, cancel1 := context.WithTimeout(r.Context(), rlim)
+				got := tryGetCached(ctx1, rdb, dataKey)
+				cancel1()
+				if got != nil {
+					// Проверка reuse ключа с другим телом
+					if got.Fingerprint == fp || fp == "" {
+						writeCached(w, key, got)
+						if span := trace.SpanFromContext(r.Context()); span != nil {
+							span.SetAttributes(attribute.Bool("idem.cache_hit", true))
+						}
+						return
+					}
+					http.Error(w, "Idempotency-Key conflict", http.StatusConflict)
+					return
+				}
+			}
+
+			// 2) Пытаемся взять лок (с токеном)
+			token := randToken()
+			var gotLock bool
+			{
+				ctx2, cancel2 := context.WithTimeout(r.Context(), rlim)
+				ok, _ := rdb.SetNX(ctx2, lockKey, token, cfg.LockTTL).Result()
+				cancel2()
+				gotLock = ok
+			}
+
+			if !gotLock {
+				// Лок уже занят: попробуем немного подождать появления результата (если включено)
+				if cfg.WaitForResult > 0 {
+					if span := trace.SpanFromContext(r.Context()); span != nil {
+						span.SetAttributes(attribute.Bool("idem.wait_on_conflict", true))
+					}
+					deadline := time.Now().Add(cfg.WaitForResult)
+					for time.Now().Before(deadline) {
+						// Маленькая задержка
+						time.Sleep(cfg.WaitPollInterval)
+						ctxPoll, cancelPoll := context.WithTimeout(r.Context(), rlim)
+						got := tryGetCached(ctxPoll, rdb, dataKey)
+						cancelPoll()
+						if got != nil {
+							// Нашли готовый результат — отдаём
+							if got.Fingerprint == fp || fp == "" {
+								writeCached(w, key, got)
+								if span := trace.SpanFromContext(r.Context()); span != nil {
+									span.SetAttributes(attribute.Bool("idem.cache_hit_after_wait", true))
+								}
+								return
+							}
+							http.Error(w, "Idempotency-Key conflict", http.StatusConflict)
+							return
+						}
+					}
+				}
+				// Не дождались — конфликт (подсказываем повторить позже)
 				w.Header().Set("Retry-After", "1")
 				http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 				return
 			}
-			defer func() { _ = rdb.Del(context.Background(), lockKey).Err() }()
+			// Мы — владелец лока
+			if span := trace.SpanFromContext(r.Context()); span != nil {
+				span.SetAttributes(attribute.Bool("idem.lock_owner", true))
+			}
+			defer func() {
+				// безопасное снятие лока по токену
+				ctxU, cancelU := context.WithTimeout(context.Background(), rlim)
+				defer cancelU()
+				_, _ = rdb.Eval(ctxU, luaUnlockScript, []string{lockKey}, token).Result()
+			}()
 
-			// 3) Выполняем хендлер, буферизуя ответ (лимит — MaxBodyBytes)
+			// 3) Выполняем реальный хендлер, буферизуя ответ
 			bw := newBufferingWriter(w, cfg.MaxBodyBytes)
 			next.ServeHTTP(bw, r)
 
-			// 4) Кешируем ТОЛЬКО успешные 2xx (можно расширить по желанию)
+			// 4) Кэшируем ТОЛЬКО 2xx-ответы
 			if bw.status >= 200 && bw.status < 300 {
 				cr := &cachedResp{
 					Status:      bw.status,
@@ -107,11 +167,13 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 					Body:        bw.buf.Bytes(),
 					Fingerprint: fp,
 				}
-				// фоновая запись (не блокируем ответ клиенту)
+				// Фоновая запись
 				go func() {
-					ctx2, cancel2 := context.WithTimeout(context.Background(), rlim)
-					defer cancel2()
-					saveCached(ctx2, rdb, dataKey, cr, cfg.TTL)
+					ctx3, cancel3 := context.WithTimeout(context.Background(), rlim)
+					defer cancel3()
+					saveCached(ctx3, rdb, dataKey, cr, cfg.TTL)
+					// Подстрахуем: поставим TTL, если его вдруг нет
+					_ = rdb.ExpireNX(ctx3, dataKey, cfg.TTL).Err()
 				}()
 				w.Header().Set("Idempotency-Key", key)
 				w.Header().Set("Idempotency-Cache", "miss-store")
@@ -119,6 +181,8 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 		})
 	}
 }
+
+// --- вспомогательное ниже (без изменений по сути, но импортован strconv) ---
 
 func isMutating(m string) bool {
 	switch m {
@@ -133,10 +197,8 @@ func fingerprintRequest(r *http.Request, max int64) (string, []byte, bool) {
 	if r.Body == nil {
 		return "", nil, false
 	}
-	// читаем с ограничением
 	lim := io.LimitedReader{R: r.Body, N: max + 1}
 	b, _ := io.ReadAll(&lim)
-	// если > max — не считаем fp, чтобы не хранить огромные тела
 	if int64(len(b)) > max {
 		return "", b[:max], true
 	}
@@ -164,7 +226,6 @@ func (bw *bufferingWriter) WriteHeader(code int) {
 }
 
 func (bw *bufferingWriter) Write(p []byte) (int, error) {
-	// ограничим буфер
 	if bw.wrote < bw.max {
 		n := int64(len(p))
 		toCopy := n
@@ -208,6 +269,12 @@ func writeCached(w http.ResponseWriter, idemKey string, cr *cachedResp) {
 	w.Header().Set("Idempotency-Cache", "hit")
 	w.WriteHeader(cr.Status)
 	_, _ = w.Write(cr.Body)
+}
+
+func randToken() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 func pickHeaders(h http.Header) map[string]string {

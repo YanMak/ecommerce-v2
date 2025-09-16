@@ -101,3 +101,12 @@ func (r *certificatesRepo) Search(ctx context.Context, f contracts.SearchFilter,
 	hasNext := int64(norm.Offset)+int64(len(out)) < total
 	return out, total, hasNext, nil
 }
+
+func (r *certificatesRepo) UpsertDocument(ctx context.Context, d contracts.UpsertDocument) error {
+	return r.q.UpsertDocument(ctx, dbgen.UpsertDocumentParams{
+		ID:            d.ID,
+		CertificateID: d.CertificateID,
+		Url:           d.URL,
+		UrlMachine:    d.URLMachine,
+	})
+}

@@ -2,20 +2,13 @@ package grpcin
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
-	"github.com/YanMak/ecommerce/v2/pkg/errkit"
 	"github.com/YanMak/ecommerce/v2/pkg/errkitx"
 	"github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	"github.com/YanMak/ecommerce/v2/pkg/paging"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type CertificatesServer struct {
@@ -107,83 +100,96 @@ func validateSearchRequest(req *crmpb.SearchCertificatesRequest) error {
 	return nil
 }
 
-// ----- helpers -----
-
-// unwrap google.protobuf.*Value -> *T
-func strPtr(v *wrapperspb.StringValue) *string {
-	if v == nil {
-		return nil
+func (s *CertificatesServer) UpsertDocument(ctx context.Context, req *crmpb.UpsertDocumentRequest) (*crmpb.UpsertDocumentResponse, error) {
+	err := s.uc.UpsertDocument(ctx, contracts.UpsertDocument{
+		ID:            req.GetId(),
+		CertificateID: req.GetCertificateId(),
+		URL:           req.GetUrl(),
+		URLMachine:    req.GetUrlMachine(),
+	})
+	if err != nil {
+		return nil, toStatus(ctx, err)
 	}
-	s := v.Value
-	return &s
-}
-func i64Ptr(v *wrapperspb.Int64Value) *int64 {
-	if v == nil {
-		return nil
-	}
-	i := v.Value
-	return &i
-}
-func boolPtr(v *wrapperspb.BoolValue) *bool {
-	if v == nil {
-		return nil
-	}
-	b := v.Value
-	return &b
+	return &crmpb.UpsertDocumentResponse{Id: req.GetId()}, nil
 }
 
-// unwrap Timestamp -> *time.Time
-func tsPtr(ts *timestamppb.Timestamp) *time.Time {
-	if ts == nil {
-		return nil
-	}
-	t := ts.AsTime()
-	return &t
-}
+// // ----- helpers -----
 
-// wrap *time.Time -> *Timestamp (может быть nil)
-func tsWrap(t *time.Time) *timestamppb.Timestamp {
-	if t == nil {
-		return nil
-	}
-	return timestamppb.New(*t)
-}
+// // unwrap google.protobuf.*Value -> *T
+// func strPtr(v *wrapperspb.StringValue) *string {
+// 	if v == nil {
+// 		return nil
+// 	}
+// 	s := v.Value
+// 	return &s
+// }
+// func i64Ptr(v *wrapperspb.Int64Value) *int64 {
+// 	if v == nil {
+// 		return nil
+// 	}
+// 	i := v.Value
+// 	return &i
+// }
+// func boolPtr(v *wrapperspb.BoolValue) *bool {
+// 	if v == nil {
+// 		return nil
+// 	}
+// 	b := v.Value
+// 	return &b
+// }
 
-// wrap *string -> *StringValue (может быть nil)
-func strWrap(s *string) *wrapperspb.StringValue {
-	if s == nil {
-		return nil
-	}
-	return &wrapperspb.StringValue{Value: *s}
-}
+// // unwrap Timestamp -> *time.Time
+// func tsPtr(ts *timestamppb.Timestamp) *time.Time {
+// 	if ts == nil {
+// 		return nil
+// 	}
+// 	t := ts.AsTime()
+// 	return &t
+// }
 
-func mapErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	// если уже статус — не трогаем
-	if s, ok := status.FromError(err); ok && s.Code() != codes.OK {
-		return err
-	}
+// // wrap *time.Time -> *Timestamp (может быть nil)
+// func tsWrap(t *time.Time) *timestamppb.Timestamp {
+// 	if t == nil {
+// 		return nil
+// 	}
+// 	return timestamppb.New(*t)
+// }
 
-	switch {
-	case errors.Is(err, errkit.ErrInvalid):
-		return status.Error(codes.InvalidArgument, "invalid")
-	case errors.Is(err, errkit.ErrNotFound):
-		return status.Error(codes.NotFound, "not found")
-	case errors.Is(err, errkit.ErrConflict):
-		return status.Error(codes.AlreadyExists, "conflict")
-	case errors.Is(err, errkit.ErrUnauthorized):
-		return status.Error(codes.Unauthenticated, "unauthenticated")
-	case errors.Is(err, errkit.ErrForbidden):
-		return status.Error(codes.PermissionDenied, "forbidden")
-	case errkit.IsTransient(err):
-		return status.Error(codes.Unavailable, "transient")
-	case errors.Is(err, errkit.ErrDeadline):
-		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
-	case errors.Is(err, errkit.ErrCanceled):
-		return status.Error(codes.Canceled, "canceled")
-	default:
-		return status.Error(codes.Internal, "internal")
-	}
-}
+// // wrap *string -> *StringValue (может быть nil)
+// func strWrap(s *string) *wrapperspb.StringValue {
+// 	if s == nil {
+// 		return nil
+// 	}
+// 	return &wrapperspb.StringValue{Value: *s}
+// }
+
+// func mapErr(err error) error {
+// 	if err == nil {
+// 		return nil
+// 	}
+// 	// если уже статус — не трогаем
+// 	if s, ok := status.FromError(err); ok && s.Code() != codes.OK {
+// 		return err
+// 	}
+
+// 	switch {
+// 	case errors.Is(err, errkit.ErrInvalid):
+// 		return status.Error(codes.InvalidArgument, "invalid")
+// 	case errors.Is(err, errkit.ErrNotFound):
+// 		return status.Error(codes.NotFound, "not found")
+// 	case errors.Is(err, errkit.ErrConflict):
+// 		return status.Error(codes.AlreadyExists, "conflict")
+// 	case errors.Is(err, errkit.ErrUnauthorized):
+// 		return status.Error(codes.Unauthenticated, "unauthenticated")
+// 	case errors.Is(err, errkit.ErrForbidden):
+// 		return status.Error(codes.PermissionDenied, "forbidden")
+// 	case errkit.IsTransient(err):
+// 		return status.Error(codes.Unavailable, "transient")
+// 	case errors.Is(err, errkit.ErrDeadline):
+// 		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+// 	case errors.Is(err, errkit.ErrCanceled):
+// 		return status.Error(codes.Canceled, "canceled")
+// 	default:
+// 		return status.Error(codes.Internal, "internal")
+// 	}
+// }

@@ -9,8 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/go-chi/chi/v5"
 )
 
 // RateLimitFixedWindow ограничивает N запросов за окно window.
@@ -41,10 +39,11 @@ func RateLimitFixedWindow(rdb *redis.Client, limit int, window time.Duration, su
 			n, err := rdb.Incr(ctx, key).Result()
 			if err == nil && n == 1 {
 				_ = rdb.Expire(ctx, key, window).Err()
-			} else {
-				res := rdb.Expire(ctx, key, 10*time.Second).Err()
-				fmt.Println("erro while rdb.Expire(ctx, key, 10*time.Nanosecond).Err()", res)
 			}
+			// else {
+			// 	res := rdb.Expire(ctx, key, 10*time.Second).Err()
+			// 	fmt.Println("erro while rdb.Expire(ctx, key, 10*time.Nanosecond).Err()", res)
+			// }
 
 			span := trace.SpanFromContext(r.Context())
 
@@ -81,15 +80,6 @@ func RateLimitFixedWindow(rdb *redis.Client, limit int, window time.Duration, su
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func routePatternOrPath(r *http.Request) string {
-	if rc := chi.RouteContext(r.Context()); rc != nil {
-		if p := rc.RoutePattern(); p != "" {
-			return p
-		}
-	}
-	return r.URL.Path
 }
 
 func itoa(x int) string {

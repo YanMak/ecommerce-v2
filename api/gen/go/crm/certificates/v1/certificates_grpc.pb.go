@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Certificates_SearchCertificates_FullMethodName = "/crm.certificates.v1.Certificates/SearchCertificates"
+	Certificates_UpsertDocument_FullMethodName     = "/crm.certificates.v1.Certificates/UpsertDocument"
 )
 
 // CertificatesClient is the client API for Certificates service.
@@ -32,6 +33,8 @@ const (
 // - idempotency-key: опциональный ключ идемпотентности
 type CertificatesClient interface {
 	SearchCertificates(ctx context.Context, in *SearchCertificatesRequest, opts ...grpc.CallOption) (*SearchCertificatesResponse, error)
+	// NEW: идемпотентная мутация документа
+	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*UpsertDocumentResponse, error)
 }
 
 type certificatesClient struct {
@@ -52,6 +55,16 @@ func (c *certificatesClient) SearchCertificates(ctx context.Context, in *SearchC
 	return out, nil
 }
 
+func (c *certificatesClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*UpsertDocumentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertDocumentResponse)
+	err := c.cc.Invoke(ctx, Certificates_UpsertDocument_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CertificatesServer is the server API for Certificates service.
 // All implementations must embed UnimplementedCertificatesServer
 // for forward compatibility.
@@ -62,6 +75,8 @@ func (c *certificatesClient) SearchCertificates(ctx context.Context, in *SearchC
 // - idempotency-key: опциональный ключ идемпотентности
 type CertificatesServer interface {
 	SearchCertificates(context.Context, *SearchCertificatesRequest) (*SearchCertificatesResponse, error)
+	// NEW: идемпотентная мутация документа
+	UpsertDocument(context.Context, *UpsertDocumentRequest) (*UpsertDocumentResponse, error)
 	mustEmbedUnimplementedCertificatesServer()
 }
 
@@ -74,6 +89,9 @@ type UnimplementedCertificatesServer struct{}
 
 func (UnimplementedCertificatesServer) SearchCertificates(context.Context, *SearchCertificatesRequest) (*SearchCertificatesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchCertificates not implemented")
+}
+func (UnimplementedCertificatesServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*UpsertDocumentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpsertDocument not implemented")
 }
 func (UnimplementedCertificatesServer) mustEmbedUnimplementedCertificatesServer() {}
 func (UnimplementedCertificatesServer) testEmbeddedByValue()                      {}
@@ -114,6 +132,24 @@ func _Certificates_SearchCertificates_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Certificates_UpsertDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertDocumentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CertificatesServer).UpsertDocument(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Certificates_UpsertDocument_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CertificatesServer).UpsertDocument(ctx, req.(*UpsertDocumentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Certificates_ServiceDesc is the grpc.ServiceDesc for Certificates service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -124,6 +160,10 @@ var Certificates_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SearchCertificates",
 			Handler:    _Certificates_SearchCertificates_Handler,
+		},
+		{
+			MethodName: "UpsertDocument",
+			Handler:    _Certificates_UpsertDocument_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

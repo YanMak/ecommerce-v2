@@ -28,3 +28,11 @@ func Int(key string, def int) int {
 	}
 	return def
 }
+func Int64(key string, def int) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return int64(n)
+		}
+	}
+	return int64(def)
+}

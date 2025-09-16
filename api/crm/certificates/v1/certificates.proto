@@ -12,6 +12,9 @@ import "google/protobuf/wrappers.proto";
 // - idempotency-key: опциональный ключ идемпотентности
 service Certificates {
   rpc SearchCertificates(SearchCertificatesRequest) returns (SearchCertificatesResponse);
+
+  // NEW: идемпотентная мутация документа
+  rpc UpsertDocument (UpsertDocumentRequest) returns (UpsertDocumentResponse);
 }
 
 // Вход: опциональные фильтры + пагинация page/per_page.
@@ -48,4 +51,17 @@ message SearchCertificatesResponse {
   repeated CertificateRow rows = 1;
   int64 total                  = 2;
   bool  has_next               = 3;
+}
+
+message UpsertDocumentRequest {
+  int64 id = 1;                // document id (pk)
+  int64 certificate_id = 2;    // fk to certificate
+  string url = 3;
+  string url_machine = 4;
+  // опционально: idempotency_key для трассировки/логов
+  string idempotency_key = 10;
+}
+
+message UpsertDocumentResponse {
+  int64 id = 1; // echo
 }
