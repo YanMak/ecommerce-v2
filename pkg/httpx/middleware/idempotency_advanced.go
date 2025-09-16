@@ -159,7 +159,7 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 			next.ServeHTTP(bw, r)
 
 			// 4) Кэшируем ТОЛЬКО 2xx-ответы
-			if bw.status >= 200 && bw.status < 300 {
+			if bw.status >= 200 && bw.status < 300 && !bw.overflow {
 				cr := &cachedResp{
 					Status:      bw.status,
 					ContentType: bw.ct,
@@ -177,6 +177,9 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 				}()
 				w.Header().Set("Idempotency-Key", key)
 				w.Header().Set("Idempotency-Cache", "miss-store")
+			} else if bw.overflow {
+				// большой ответ — сознательно не кэшируем
+				w.Header().Set("Idempotency-Cache", "skip-oversize")
 			}
 		})
 	}
@@ -208,11 +211,12 @@ func fingerprintRequest(r *http.Request, max int64) (string, []byte, bool) {
 
 type bufferingWriter struct {
 	http.ResponseWriter
-	status int
-	buf    bytes.Buffer
-	ct     string
-	max    int64
-	wrote  int64
+	status   int
+	buf      bytes.Buffer
+	ct       string
+	max      int64
+	wrote    int64
+	overflow bool
 }
 
 func newBufferingWriter(w http.ResponseWriter, max int64) *bufferingWriter {
@@ -226,14 +230,22 @@ func (bw *bufferingWriter) WriteHeader(code int) {
 }
 
 func (bw *bufferingWriter) Write(p []byte) (int, error) {
+	// пробуем буферизовать до лимита; если вышли — отмечаем overflow
 	if bw.wrote < bw.max {
 		n := int64(len(p))
 		toCopy := n
 		if bw.wrote+n > bw.max {
 			toCopy = bw.max - bw.wrote
+			bw.overflow = true
 		}
-		bw.buf.Write(p[:toCopy])
-		bw.wrote += toCopy
+		if toCopy > 0 {
+			bw.buf.Write(p[:toCopy])
+			bw.wrote += toCopy
+		} else {
+			bw.overflow = true
+		}
+	} else {
+		bw.overflow = true
 	}
 	return bw.ResponseWriter.Write(p)
 }
