@@ -13,4 +13,7 @@ type CertificatesRepo interface {
 
 	// NEW:
 	UpsertDocument(ctx context.Context, d contracts.UpsertDocument) error
+
+	// НОВОЕ:
+	UpsertCertificateMin(ctx context.Context, in contracts.UpsertCertificateMin) error
 }

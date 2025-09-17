@@ -13,6 +13,9 @@ import "google/protobuf/wrappers.proto";
 service Certificates {
   rpc SearchCertificates(SearchCertificatesRequest) returns (SearchCertificatesResponse);
 
+  rpc UpsertCertificateMin(UpsertCertificateMinRequest) returns (UpsertCertificateMinResponse);
+
+
   // NEW: идемпотентная мутация документа
   rpc UpsertDocument (UpsertDocumentRequest) returns (UpsertDocumentResponse);
 }
@@ -64,4 +67,16 @@ message UpsertDocumentRequest {
 
 message UpsertDocumentResponse {
   int64 id = 1; // echo
+}
+
+message UpsertCertificateMinRequest {
+  int64 id = 1;
+  string title = 2;
+  int64 category_id = 3;
+  bool opened = 4;
+  int64 entity_type_id = 5;
+  string uf_uuid = 6;
+}
+message UpsertCertificateMinResponse {
+  int64 id = 1;
 }

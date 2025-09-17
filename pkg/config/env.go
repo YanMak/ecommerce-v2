@@ -36,3 +36,11 @@ func Int64(key string, def int) int64 {
 	}
 	return int64(def)
 }
+
+func Float(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		fl, _ := strconv.ParseFloat(key, 64)
+		return fl
+	}
+	return def
+}

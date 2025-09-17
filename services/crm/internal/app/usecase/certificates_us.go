@@ -29,6 +29,30 @@ func NewCertificatesUC(pool *pgxpool.Pool, crmM *crmmetrics.CRM) *CertificatesUC
 	return &CertificatesUC{pool: pool, m: crmM}
 }
 
+func (uc *CertificatesUC) UpsertCertificateMin(ctx context.Context, in contracts.UpsertCertificateMin) (err error) {
+	log := tlog.FromContext(ctx)
+
+	run := func(ctx context.Context) error {
+		return tx.InTx(ctx, uc.pool, func(ctx context.Context, dbtx pgx.Tx) error {
+			r := repo.NewCertificatesRepo(dbtx)
+			return r.UpsertCertificateMin(ctx, in)
+		})
+	}
+
+	err = retry.Do(
+		ctx,
+		run,
+		retry.Only(errkit.IsTransient),
+		retry.WithMaxAttempts(3),
+		retry.WithBaseDelay(100*time.Millisecond),
+		retry.WithMaxDelay(2*time.Second),
+		retry.WithOnAttempt(func(ctx context.Context, attempt int, err error) {
+			log.Warn("upsert_certificate_min_retry", zap.Int("attempt", attempt), zap.Error(err))
+		}),
+	)
+	return err
+}
+
 func (uc *CertificatesUC) Search(
 	ctx context.Context,
 	f contracts.SearchFilter,

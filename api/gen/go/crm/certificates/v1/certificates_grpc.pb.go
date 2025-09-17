@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Certificates_SearchCertificates_FullMethodName = "/crm.certificates.v1.Certificates/SearchCertificates"
-	Certificates_UpsertDocument_FullMethodName     = "/crm.certificates.v1.Certificates/UpsertDocument"
+	Certificates_SearchCertificates_FullMethodName   = "/crm.certificates.v1.Certificates/SearchCertificates"
+	Certificates_UpsertCertificateMin_FullMethodName = "/crm.certificates.v1.Certificates/UpsertCertificateMin"
+	Certificates_UpsertDocument_FullMethodName       = "/crm.certificates.v1.Certificates/UpsertDocument"
 )
 
 // CertificatesClient is the client API for Certificates service.
@@ -33,6 +34,7 @@ const (
 // - idempotency-key: опциональный ключ идемпотентности
 type CertificatesClient interface {
 	SearchCertificates(ctx context.Context, in *SearchCertificatesRequest, opts ...grpc.CallOption) (*SearchCertificatesResponse, error)
+	UpsertCertificateMin(ctx context.Context, in *UpsertCertificateMinRequest, opts ...grpc.CallOption) (*UpsertCertificateMinResponse, error)
 	// NEW: идемпотентная мутация документа
 	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*UpsertDocumentResponse, error)
 }
@@ -49,6 +51,16 @@ func (c *certificatesClient) SearchCertificates(ctx context.Context, in *SearchC
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchCertificatesResponse)
 	err := c.cc.Invoke(ctx, Certificates_SearchCertificates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *certificatesClient) UpsertCertificateMin(ctx context.Context, in *UpsertCertificateMinRequest, opts ...grpc.CallOption) (*UpsertCertificateMinResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertCertificateMinResponse)
+	err := c.cc.Invoke(ctx, Certificates_UpsertCertificateMin_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +87,7 @@ func (c *certificatesClient) UpsertDocument(ctx context.Context, in *UpsertDocum
 // - idempotency-key: опциональный ключ идемпотентности
 type CertificatesServer interface {
 	SearchCertificates(context.Context, *SearchCertificatesRequest) (*SearchCertificatesResponse, error)
+	UpsertCertificateMin(context.Context, *UpsertCertificateMinRequest) (*UpsertCertificateMinResponse, error)
 	// NEW: идемпотентная мутация документа
 	UpsertDocument(context.Context, *UpsertDocumentRequest) (*UpsertDocumentResponse, error)
 	mustEmbedUnimplementedCertificatesServer()
@@ -89,6 +102,9 @@ type UnimplementedCertificatesServer struct{}
 
 func (UnimplementedCertificatesServer) SearchCertificates(context.Context, *SearchCertificatesRequest) (*SearchCertificatesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchCertificates not implemented")
+}
+func (UnimplementedCertificatesServer) UpsertCertificateMin(context.Context, *UpsertCertificateMinRequest) (*UpsertCertificateMinResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpsertCertificateMin not implemented")
 }
 func (UnimplementedCertificatesServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*UpsertDocumentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpsertDocument not implemented")
@@ -132,6 +148,24 @@ func _Certificates_SearchCertificates_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Certificates_UpsertCertificateMin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertCertificateMinRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CertificatesServer).UpsertCertificateMin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Certificates_UpsertCertificateMin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CertificatesServer).UpsertCertificateMin(ctx, req.(*UpsertCertificateMinRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Certificates_UpsertDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpsertDocumentRequest)
 	if err := dec(in); err != nil {
@@ -160,6 +194,10 @@ var Certificates_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SearchCertificates",
 			Handler:    _Certificates_SearchCertificates_Handler,
+		},
+		{
+			MethodName: "UpsertCertificateMin",
+			Handler:    _Certificates_UpsertCertificateMin_Handler,
 		},
 		{
 			MethodName: "UpsertDocument",

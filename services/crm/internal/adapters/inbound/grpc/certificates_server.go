@@ -20,6 +20,21 @@ func NewCertificatesServer(uc *usecase.CertificatesUC) *CertificatesServer {
 	return &CertificatesServer{uc: uc}
 }
 
+func (s *CertificatesServer) UpsertCertificateMin(ctx context.Context, req *crmpb.UpsertCertificateMinRequest) (*crmpb.UpsertCertificateMinResponse, error) {
+	err := s.uc.UpsertCertificateMin(ctx, contracts.UpsertCertificateMin{
+		ID:           req.GetId(),
+		Title:        req.GetTitle(),
+		CategoryID:   req.GetCategoryId(),
+		Opened:       req.GetOpened(),
+		EntityTypeID: req.GetEntityTypeId(),
+		UfUUID:       req.GetUfUuid(),
+	})
+	if err != nil {
+		return nil, toStatus(ctx, err)
+	}
+	return &crmpb.UpsertCertificateMinResponse{Id: req.GetId()}, nil
+}
+
 func (s *CertificatesServer) SearchCertificates(ctx context.Context, req *crmpb.SearchCertificatesRequest) (*crmpb.SearchCertificatesResponse, error) {
 
 	// переносим метаданные в наш context

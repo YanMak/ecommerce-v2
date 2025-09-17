@@ -79,8 +79,8 @@ func Idempotency(rdb *redis.Client, cfg IdemConfig) func(http.Handler) http.Hand
 			}
 
 			// Короткий контекст для операций Redis
-			//rlim := 120 * time.Millisecond
-			rlim := 1200 * time.Second
+			rlim := 120 * time.Millisecond
+			//rlim := 1200 * time.Second
 
 			// 1) Попытка отдать из кэша
 			{

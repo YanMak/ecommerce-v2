@@ -10,6 +10,8 @@ import (
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/contracts"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/repoports"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/dbgen"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // repo реализует repoports.CertificatesRepo поверх sqlc/dbgen.
@@ -109,4 +111,55 @@ func (r *certificatesRepo) UpsertDocument(ctx context.Context, d contracts.Upser
 		Url:           d.URL,
 		UrlMachine:    d.URLMachine,
 	})
+}
+
+func (r *certificatesRepo) UpsertCertificateMin(ctx context.Context, in contracts.UpsertCertificateMin) error {
+	now := time.Now()
+
+	var ufUUID pgtype.UUID
+	if in.UfUUID != "" {
+		if u, err := uuid.Parse(in.UfUUID); err == nil {
+			ufUUID = pgtype.UUID{Bytes: u, Valid: true}
+		}
+	}
+
+	// ВАЖНО: не-null поля обязательно задаём.
+	// Остальные — в NULL (pgtype.* с Valid=false) или пустые массивы.
+	params := dbgen.UpsertCertificateParams{
+		ID:           in.ID,
+		Title:        in.Title,
+		CategoryID:   in.CategoryID,
+		Opened:       in.Opened,
+		EntityTypeID: in.EntityTypeID,
+
+		// времена (NOT NULL):
+		CreatedTime: pgtype.Timestamptz{Time: now, Valid: true},
+		UpdatedTime: pgtype.Timestamptz{Time: now, Valid: true},
+		MovedTime:   pgtype.Timestamptz{Time: now, Valid: true},
+
+		// act/by: по схеме NOT NULL DEFAULT 0 — явно кладём 0
+		CreatedBy: 0,
+		UpdatedBy: 0,
+		MovedBy:   0,
+
+		// обязательные NOT NULL массивы — пустые, не nil
+		Observers:  []int32{},
+		ContactIds: []int32{},
+
+		// опционалки — как NULL (zero value pgtype.* => Valid=false)
+		// XmlID, PreviousStageID, Begindate, Closedate, CompanyID, ContactID, Opportunity,
+		// TaxValue, CurrencyID, OpportunityAccount, TaxValueAccount, AccountCurrencyID,
+		// MycompanyID, SourceID, SourceDescription, WebformID, UfInn, UfCompanyName, UfNumber,
+		// UfStartDate, UfContractDate, UfEndDate, UfStatus, UfIdsDocuments, AssignedByID,
+		// LastActivityBy, LastActivityTime, UtmSource, UtmMedium, UtmCampaign, UtmContent, UtmTerm
+		// — оставляем по умолчанию (NULL).
+
+		// флаги (NOT NULL) — задаём явно:
+		IsManualOpportunity: false,
+
+		// uuid:
+		UfUuid: ufUUID,
+	}
+
+	return r.q.UpsertCertificate(ctx, params)
 }

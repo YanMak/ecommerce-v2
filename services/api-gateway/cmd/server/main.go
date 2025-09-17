@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/YanMak/ecommerce/v2/pkg/cbreaker"
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	"github.com/YanMak/ecommerce/v2/pkg/otelx"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
@@ -118,6 +119,35 @@ func main() {
 	}
 	defer shutdown(context.Background())
 
+	// ---- circuit breaker con
+	cb := cbreaker.New(reg, cbreaker.Config{
+		Enabled:              cfg.Int("CB_ENABLED", 1) == 1,
+		Target:               "crm",
+		Interval:             cfg.Dur("CB_INTERVAL", 30*time.Second),
+		Timeout:              cfg.Dur("CB_TIMEOUT", 15*time.Second),
+		HalfOpenMaxRequests:  uint32(cfg.Int("CB_HALFOPEN_MAXREQUESTS", 2)),
+		MinSamples:           uint32(cfg.Int("CB_MIN_SAMPLES", 10)),
+		ErrorRate:            0.6,
+		MaxConsecutiveErrors: uint32(cfg.Int("CB_MAX_CONSECUTIVE_ERRORS", 5)),
+	})
+
+	rlCfg := httpmdw.RateLimitConfig{
+		Rate:      cfg.Float("RL_RATE", 20.0), // 20 rps
+		Burst:     cfg.Int("RL_BURST", 40),    // до 40 в рывке
+		Scope:     httpmdw.RLScopeIPRoute,     // per-IP-per-route
+		KeyPrefix: cfg.Str("RL_KEY_PREFIX", "rl:tb:"),
+		TTL:       cfg.Dur("RL_TTL", 2*time.Minute), // будет скорректирован вверх, если мало
+		Wait:      cfg.Dur("RL_WAIT", 0),            // можно 100ms для сглаживания
+	}
+
+	idemCfg := httpmdw.IdemConfig{
+		TTL:              cfg.Dur("IDEM_TTL", 1*time.Minute),
+		LockTTL:          cfg.Dur("IDEM_LOCK_TTL", 60*time.Second),
+		MaxBodyBytes:     cfg.Int64("IDEM_MAX_BODY", 1<<20),
+		WaitForResult:    cfg.Dur("IDEM_WAIT", 500*time.Millisecond), // включили короткое ожидание
+		WaitPollInterval: cfg.Dur("IDEM_WAIT_POLL", 100*time.Millisecond),
+	}
+
 	// ---- gRPC
 	tlsDialOpt, err := clientCredsToCRM()
 	if err != nil {
@@ -127,16 +157,17 @@ func main() {
 
 	// Retry-политика только для идемпотентного метода SearchCertificates
 	const sc = `{
-	  "methodConfig": [{
-	    "name": [{"service":"crm.certificates.v1.Certificates","method":"SearchCertificates"}],
-	    "retryPolicy": {
-	      "MaxAttempts": 3,
-	      "InitialBackoff": "0.1s",
-	      "MaxBackoff": "1s",
-	      "BackoffMultiplier": 2.0,
-	      "RetryableStatusCodes": ["UNAVAILABLE","DEADLINE_EXCEEDED"]
-	    }
-	  }]
+		"methodConfig": [{
+			"name": [{"service":"crm.certificates.v1.Certificates","method":"SearchCertificates"}],
+			"timeout": "0.8s",
+			"retryPolicy": {
+			"maxAttempts": 3,
+			"initialBackoff": "0.1s",
+			"maxBackoff": "1s",
+			"backoffMultiplier": 2.0,
+			"retryableStatusCodes": ["UNAVAILABLE", "RESOURCE_EXHAUSTED"]
+			}
+		}]
 	}`
 
 	conn, err := grpc.NewClient(
@@ -164,18 +195,11 @@ func main() {
 	crmClient := crmpb.NewCertificatesClient(conn)
 	certsUC := usecase.NewCertificatesUC(crmClient)
 
-	// где-то перед маршрутами:
-	idemCfg := httpmdw.IdemConfig{
-		TTL:              cfg.Dur("IDEM_TTL", 30*time.Minute),
-		LockTTL:          cfg.Dur("IDEM_LOCK_TTL", 60*time.Second),
-		MaxBodyBytes:     cfg.Int64("IDEM_MAX_BODY", 1<<20),
-		WaitForResult:    cfg.Dur("IDEM_WAIT", 500*time.Millisecond), // включили короткое ожидание
-		WaitPollInterval: cfg.Dur("IDEM_WAIT_POLL", 100*time.Millisecond),
-	}
-
 	// ---- HTTP main router
 	r := chi.NewRouter()
 	r.Use(
+		// глобально на публичный HTTP-роутер (до ручек)
+		httpmdw.RateLimitTokenBucket(rdb, reg, rlCfg),
 		//middleware.RequestID,
 		middleware.Recoverer,
 		//middleware.Logger,
@@ -211,10 +235,15 @@ func main() {
 
 	r.With(
 		middleware.StripSlashes,
-		httpmdw.WithRequestID,
 		// идемпотентность ТОЛЬКО на мутирующие
 		httpmdw.Idempotency(rdb, idemCfg),
-	).Post("/crm/documents/upsert", crmhandlers.UpsertDocument(crmClient))
+		bind.WithDTO(gwdto.BindCRMUpsertDocQuery),
+	).Post("/crm/documents/upsert", crmhandlers.UpsertDocument(crmClient, cb))
+
+	r.With(
+		middleware.StripSlashes,
+		httpmdw.Idempotency(rdb, idemCfg), // ← ВАЖНО: идемпотентность на мутацию
+	).Post("/crm/certificates/upsert-min", crmhandlers.UpsertCertificateMin(crmClient, cb))
 
 	// ---- HTTP admin router
 	admin := chi.NewRouter()
