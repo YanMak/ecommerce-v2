@@ -200,6 +200,7 @@ func main() {
 	r.Use(
 		// глобально на публичный HTTP-роутер (до ручек)
 		httpmdw.RateLimitTokenBucket(rdb, reg, rlCfg),
+		httpmw.InFlight(10),
 		//middleware.RequestID,
 		middleware.Recoverer,
 		//middleware.Logger,
@@ -224,7 +225,6 @@ func main() {
 		IdleTimeout:       idleTO,
 	}
 	r.With(
-		httpmw.InFlight(10),
 		// rate limit: напр., 100 запросов за 60s на IP+маршрут
 		httpmdw.RateLimitFixedWindow(rdb, cfg.Int("RL_SEARCH_LIMIT", 1), cfg.Dur("RL_SEARCH_WINDOW", 10*time.Second), nil),
 		bind.WithDTO(gwdto.BindCRMSearchQuery), // query → DTO + Validate()
@@ -247,6 +247,12 @@ func main() {
 
 	// ---- HTTP admin router
 	admin := chi.NewRouter()
+	admin.Use(
+		middleware.Recoverer,
+		middleware.Compress(5),
+		httpmdw.WithRequestID,
+		httpmdw.WithZapLogger(baseLogger),
+	)
 	mountAdminHTTP(admin, reg, conn, rdb)
 	adminSrv := &http.Server{
 		Addr:              adminAddr,

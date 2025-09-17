@@ -21,6 +21,7 @@ import (
 	grpcin "github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/inbound/grpc"
 	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,6 +43,8 @@ import (
 	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 	otelpgx "github.com/exaring/otelpgx"
+
+	httpmdw "github.com/YanMak/ecommerce/v2/pkg/httpx/middleware"
 )
 
 func serverTLSCreds() (grpc.ServerOption, error) {
@@ -184,7 +187,7 @@ func main() {
 	)
 	defer base.Sync()
 	// OTEL {
-	shutdown, err := otelx.InitTracer(ctx, "crm")
+	shutdown, err := otelx.InitTracer(ctx, "crm-grpc")
 	if err != nil {
 		panic(err)
 	}
@@ -231,6 +234,12 @@ func main() {
 	////////////////
 	// HTTP admin
 	admin := chi.NewRouter()
+	admin.Use(
+		middleware.Recoverer,
+		middleware.Compress(5),
+		httpmdw.WithRequestID,
+		httpmdw.WithZapLogger(base),
+	)
 	//bindAdminHTTP(admin, pool, reg)
 	// /livez — процесс жив
 	admin.Get("/livez", func(w http.ResponseWriter, r *http.Request) {
