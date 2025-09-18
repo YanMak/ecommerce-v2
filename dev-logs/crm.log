@@ -1,0 +1,7 @@
+{"level":"info","ts":1758138908.8921163,"caller":"server/main.go:279","msg":"grpc_listen","service":"crm","env":"","addr":":50051"}
+{"level":"info","ts":1758138908.8921585,"caller":"server/main.go:286","msg":"admin_listen","service":"crm","env":"","addr":":8081"}
+{"level":"info","ts":1758138944.5941582,"caller":"middleware/logger_zap.go:57","msg":"http_request","service":"crm","env":"","request_id":"smoke-1","idempotency_key":"","route":"/healthz","method":"GET","remote_ip":"10.0.0.140","user_agent":"insomnia/10.3.0","status":404,"duration_ms":0.067815,"bytes":19}
+{"level":"info","ts":1758138952.5530937,"caller":"middleware/logger_zap.go:57","msg":"http_request","service":"crm","env":"","request_id":"smoke-1","idempotency_key":"","route":"/readyz","method":"GET","remote_ip":"10.0.0.140","user_agent":"insomnia/10.3.0","status":200,"duration_ms":19.602432,"bytes":2}
+{"level":"info","ts":1758138976.9173844,"caller":"middleware/logger_zap.go:57","msg":"http_request","service":"crm","env":"","request_id":"smoke-1","idempotency_key":"","route":"/readyz","method":"GET","remote_ip":"10.0.0.140","user_agent":"insomnia/10.3.0","status":200,"duration_ms":0.5915239999999999,"bytes":2}
+{"level":"info","ts":1758139022.3548563,"caller":"server/main.go:279","msg":"grpc_listen","service":"crm","env":"","addr":":50051"}
+{"level":"info","ts":1758139022.354891,"caller":"server/main.go:286","msg":"admin_listen","service":"crm","env":"","addr":":8081"}

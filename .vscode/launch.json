@@ -10,7 +10,10 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "ITEMS_DB_URL": "postgres://postgres:postgres@localhost:5432/items?sslmode=disable",
-        "PORT": "8081"
+        "PORT": "8081",
+        "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/gateway-01.log",
+        "SERVICE_NAME": "api-gateway"
+
     }
     },
     {
@@ -22,7 +25,9 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "ITEMS_DB_URL": "postgres://postgres:postgres@localhost:5432/items?sslmode=disable",
-        "PORT": "8083"
+        "PORT": "8083",
+        "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/gateway.log",
+        "SERVICE_NAME": "api-gateway"
       }
     },
     {
@@ -34,7 +39,9 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "CRM_DB_URL": "postgres://postgres:postgres@localhost:5432/crm?sslmode=disable",
-        "PORT": "8082"
+        "PORT": "8082",
+        "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/crm-01.log",
+        "SERVICE_NAME": "crm"
       }
     }
   ],

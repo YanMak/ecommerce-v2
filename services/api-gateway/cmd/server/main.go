@@ -99,7 +99,8 @@ func main() {
 
 	// ---- telemetry
 	reg, cols := prommetrics.New()
-	logger, err := tlog.NewProduction()
+	//logger, err := tlog.NewProduction()
+	logger, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "/home/makoshenets/code/ecommerce-v2/dev-logs/gateway-01.log"))
 	if err != nil {
 		panic(err)
 	}

@@ -180,7 +180,8 @@ func main() {
 	// ---- telemetry
 	reg, cols := prom.New()
 	crmM := crmmetrics.Register(reg)
-	base, _ := tlog.NewProduction()
+	//base, _ := tlog.NewProduction()
+	base, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "/home/makoshenets/code/ecommerce-v2/dev-logs/crm-01.log"))
 	base = base.With(
 		zap.String("service", "crm"),
 		zap.String("env", os.Getenv("ENV")),

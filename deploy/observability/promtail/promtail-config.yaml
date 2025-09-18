@@ -1,0 +1,62 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+scrape_configs:
+  # 1) dev-файлы из dev-logs (главное для твоего кейса)
+  - job_name: files
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: app-logs
+          __path__: /host-logs/*.log
+    pipeline_stages:
+      - regex:
+          source: filename
+          expression: ".*/(?P<service>[^/-]+)(?:-(?P<instance>[^/]+))?\\.log$"
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            trace_id: trace_id
+            span_id: span_id
+            service: service
+      - labels:
+          service:
+          instance:
+          level:
+          trace_id:
+          span_id:
+
+  # 2) (опционально) логи контейнеров, если что-то запустишь в Docker
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(loki|promtail|grafana).*'
+        action: drop
+    pipeline_stages:
+      - docker: {}
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            trace_id: trace_id
+            span_id: span_id
+            service: service
+      - labels:
+          level:
+          service:
+          trace_id:
+          span_id:
