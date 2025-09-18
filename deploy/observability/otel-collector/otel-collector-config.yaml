@@ -1,0 +1,31 @@
+receivers:
+  otlp:
+    protocols:
+      grpc: {}   # :4317
+      http: {}   # :4318
+
+processors:
+  batch: {}
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:9464"   # тут Коллектор отдаёт /metrics для Prometheus
+    namespace: "otel"
+    const_labels:
+      pipeline: "otlp"
+  # на будущее можно добавить remote_write или вендоров
+
+service:
+  telemetry:
+    metrics:
+      address: "0.0.0.0:8888"  # внутренние метрики самого коллектора (otelcol_*)
+  pipelines:
+    metrics:
+      receivers: [otlp]        # сюда позже придут метрики от сервисов по OTLP
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]  # а отсюда Prometheus заберёт pull-ом
+  

@@ -29,6 +29,7 @@ import (
 	"github.com/YanMak/ecommerce/v2/pkg/cbreaker"
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
 	"github.com/YanMak/ecommerce/v2/pkg/otelx"
+	"github.com/YanMak/ecommerce/v2/pkg/otelx/httpmetricschi"
 	prommetrics "github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
 
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
@@ -119,6 +120,20 @@ func main() {
 		panic(err)
 	}
 	defer shutdown(context.Background())
+
+	// ---- otel metrics
+	// включаем экспорт метрик в Collector (как мы настроили ранее)
+	mShutdown, err := otelx.InitMetrics(ctx, "api-gateway")
+	if err != nil {
+		panic(err)
+	}
+	defer mShutdown(context.Background())
+
+	// chi-мидлварь метрик
+	mw, err := httpmetricschi.New("github.com/YanMak/ecommerce/v2/pkg/otelx/httpmetricschi")
+	if err != nil {
+		panic(err)
+	}
 
 	// ---- circuit breaker con
 	cb := cbreaker.New(reg, cbreaker.Config{
@@ -212,6 +227,7 @@ func main() {
 		//httpmdw.WithIdempotencyKey,
 		httpmdw.WithZapLogger(baseLogger),
 		httpmdw.WithMetricsChi(cols),
+		mw.Handler,
 	)
 
 	mainSrv := &http.Server{
