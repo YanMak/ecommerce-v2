@@ -1,6 +1,21 @@
 {
   "version": "0.2.0",
   "configurations": [
+        {
+      "name": "Api-gateway telemetry (launch)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/services/api-gateway-simple/cmd/server",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ITEMS_DB_URL": "postgres://postgres:postgres@localhost:5432/items?sslmode=disable",
+        "PORT": "8081",
+        "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/gateway-01.log",
+        "SERVICE_NAME": "api-gateway"
+
+    }
+    },
     {
       "name": "Api-gateway (launch)",
       "type": "go",
@@ -42,6 +57,20 @@
         "PORT": "8082",
         "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/crm-01.log",
         "SERVICE_NAME": "crm"
+      }
+    },
+        {
+      "name": "Telemetry service (launch)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/services/telemetry/cmd/server",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "CRM_DB_URL": "postgres://postgres:postgres@localhost:5432/crm?sslmode=disable",
+        "PORT": "8082",
+        "DEV_LOG_FILE": "${workspaceFolder}/dev-logs/telemetry-service-01.log",
+        "SERVICE_NAME": "telemetry"
       }
     }
   ],

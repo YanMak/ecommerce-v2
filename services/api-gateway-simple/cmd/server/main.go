@@ -14,8 +14,9 @@ import (
 	"time"
 
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
-	crmhandlers "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/handlers/crm"
-	"github.com/YanMak/ecommerce/v2/services/api-gateway/internal/app/usecase"
+	crmhandlers "github.com/YanMak/ecommerce/v2/services/api-gateway-simple/internal/adapters/inbound/httpapi/handlers/crm"
+	telemetryhandlers "github.com/YanMak/ecommerce/v2/services/api-gateway-simple/internal/adapters/inbound/httpapi/handlers/telemetry"
+	"github.com/YanMak/ecommerce/v2/services/api-gateway-simple/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/YanMak/ecommerce/v2/pkg/cbreaker"
 	grpcx "github.com/YanMak/ecommerce/v2/pkg/grpcx"
@@ -39,7 +41,7 @@ import (
 
 	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
 
-	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway/internal/adapters/inbound/httpapi/dto"
+	gwdto "github.com/YanMak/ecommerce/v2/services/api-gateway-simple/internal/adapters/inbound/httpapi/dto"
 
 	otelhttp "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -101,7 +103,7 @@ func main() {
 	// ---- telemetry
 	reg, cols := prommetrics.New()
 	//logger, err := tlog.NewProduction()
-	logger, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "/home/makoshenets/code/ecommerce-v2/dev-logs/gateway-01.log"))
+	logger, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "dev-logs/gateway-simple-01.log"))
 	if err != nil {
 		panic(err)
 	}
@@ -115,7 +117,7 @@ func main() {
 	// OTel: инициализация трейсинга (экспорт в OTLP endpoint)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	shutdown, err := otelx.InitTracer(ctx, "api-gateway")
+	shutdown, err := otelx.InitTracer(ctx, "api-gateway-simple")
 	if err != nil {
 		panic(err)
 	}
@@ -164,11 +166,12 @@ func main() {
 		WaitPollInterval: cfg.Dur("IDEM_WAIT_POLL", 100*time.Millisecond),
 	}
 
+	//15112025 while we need to recreate pems we switch off tls
 	// ---- gRPC
-	tlsDialOpt, err := clientCredsToCRM()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// tlsDialOpt, err := clientCredsToCRM()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 	//fmt.Println("temporarily while comment passing it to gprc opts ", tlsDialOpt)
 
 	// Retry-политика только для идемпотентного метода SearchCertificates
@@ -188,8 +191,8 @@ func main() {
 
 	conn, err := grpc.NewClient(
 		"localhost:50051",
-		tlsDialOpt,
-		//grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
+		//tlsDialOpt,
+		grpc.WithTransportCredentials(insecure.NewCredentials()), // TODO: TLS позже
 		grpc.WithDefaultServiceConfig(sc),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // ← OTel client-span + прокат trace_id
 		grpc.WithChainUnaryInterceptor(
@@ -224,7 +227,8 @@ func main() {
 		// оборачиваем весь chi-роутер → появится HTTP SERVER-span на каждый запрос
 		httpmw.SpanNameFromChiRoute(),
 		httpmdw.WithRequestID,
-		//httpmdw.WithIdempotencyKey,
+		// despite not any request consits idemp key, we need to retrieve it from headers before telemetry
+		httpmdw.WithIdempotencyKey,
 		httpmdw.WithZapLogger(baseLogger),
 		httpmdw.WithMetricsChi(cols),
 		mw.Handler,
@@ -241,6 +245,29 @@ func main() {
 		WriteTimeout:      writeTO,
 		IdleTimeout:       idleTO,
 	}
+	// Telemetry
+	r.Get("/telemetry", telemetryhandlers.Telemetry(certsUC))
+	r.With(
+		middleware.StripSlashes,
+		// Yan simple idempotency key extraction to ctx
+		//httpmdw.WithIdempotencyKey,
+		// Yan this is clever idempotency with some config
+		// идемпотентность ТОЛЬКО на мутирующие
+		//httpmdw.Idempotency(rdb, idemCfg),
+		//bind.WithDTO(gwdto.BindCRMUpsertDocQuery),
+	).Get("/telemetry/telemetry", telemetryhandlers.Telemetry(certsUC))
+	r.With(
+		middleware.StripSlashes,
+		bind.WithDTO(gwdto.BindCRMSearchQuery),
+		// Yan simple idempotency key extraction to ctx
+		//httpmdw.WithIdempotencyKey,
+		// Yan this is clever idempotency with some config
+		// идемпотентность ТОЛЬКО на мутирующие
+		//httpmdw.Idempotency(rdb, idemCfg),
+		//bind.WithDTO(gwdto.BindCRMUpsertDocQuery),
+	).Post("/telemetry/telemetry", telemetryhandlers.Telemetry(certsUC))
+
+	// CRM
 	r.With(
 		// rate limit: напр., 100 запросов за 60s на IP+маршрут
 		httpmdw.RateLimitFixedWindow(rdb, cfg.Int("RL_SEARCH_LIMIT", 1), cfg.Dur("RL_SEARCH_WINDOW", 10*time.Second), nil),

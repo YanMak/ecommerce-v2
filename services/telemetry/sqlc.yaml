@@ -1,0 +1,22 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema:
+      - "db/schema.sql"
+    queries:
+      - "db/queries"
+    gen:
+      go:
+        package: "dbgen"
+        out: "internal/dbgen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_db_tags: true
+        emit_interface: false
+        emit_prepared_queries: false
+        overrides:
+          # пример: массивы int в Go как []int32
+          - column: "certificates.observers"
+            go_type: { type: "[]int32" }
+          - column: "certificates.contact_ids"
+            go_type: { type: "[]int32" }

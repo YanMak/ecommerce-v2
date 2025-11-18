@@ -18,3 +18,5 @@
 {"level":"info","ts":1758188056.8011544,"caller":"server/main.go:286","msg":"admin_listen","service":"crm","env":"","addr":":8081"}
 {"level":"info","ts":1758217989.0195928,"caller":"server/main.go:286","msg":"admin_listen","service":"crm","env":"","addr":":8081"}
 {"level":"info","ts":1758217989.019972,"caller":"server/main.go:279","msg":"grpc_listen","service":"crm","env":"","addr":":50051"}
+{"level":"info","ts":1763305843.4269412,"caller":"server/main.go:288","msg":"admin_listen","service":"telemetry","env":"","addr":":8081"}
+{"level":"info","ts":1763305843.428612,"caller":"server/main.go:281","msg":"grpc_listen","service":"telemetry","env":"","addr":":50051"}

@@ -18,8 +18,8 @@ import (
 	crmpb "github.com/YanMak/ecommerce/v2/api/gen/go/crm/certificates/v1"
 	"github.com/YanMak/ecommerce/v2/pkg/otelx"
 	"github.com/YanMak/ecommerce/v2/pkg/telemetry/metrics/prom"
-	grpcin "github.com/YanMak/ecommerce/v2/services/crm/internal/adapters/inbound/grpc"
-	"github.com/YanMak/ecommerce/v2/services/crm/internal/app/usecase"
+	grpcin "github.com/YanMak/ecommerce/v2/services/telemetry/internal/adapters/inbound/grpc"
+	"github.com/YanMak/ecommerce/v2/services/telemetry/internal/app/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
@@ -36,7 +36,7 @@ import (
 
 	tlog "github.com/YanMak/ecommerce/v2/pkg/telemetry/log"
 
-	crmmetrics "github.com/YanMak/ecommerce/v2/services/crm/internal/metrics"
+	crmmetrics "github.com/YanMak/ecommerce/v2/services/telemetry/internal/metrics"
 
 	cfg "github.com/YanMak/ecommerce/v2/pkg/config"
 
@@ -181,14 +181,14 @@ func main() {
 	reg, cols := prom.New()
 	crmM := crmmetrics.Register(reg)
 	//base, _ := tlog.NewProduction()
-	base, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "/home/makoshenets/code/ecommerce-v2/dev-logs/crm-01.log"))
+	base, err := tlog.NewLogger(cfg.Str("DEV_LOG_FILE", "dev-logs/telemetry-service-simple-01.log"))
 	base = base.With(
-		zap.String("service", "crm"),
+		zap.String("service", "telemetry"),
 		zap.String("env", os.Getenv("ENV")),
 	)
 	defer base.Sync()
 	// OTEL {
-	shutdown, err := otelx.InitTracer(ctx, "crm-grpc")
+	shutdown, err := otelx.InitTracer(ctx, "telemetry-grpc")
 	if err != nil {
 		panic(err)
 	}
@@ -202,11 +202,12 @@ func main() {
 	var ready atomic.Bool
 	ready.Store(true)
 
-	// ---- TLS options
-	srvTLSOpt, err := serverTLSCreds()
-	if err != nil {
-		panic(err)
-	}
+	// Yan 16 11 25 we disable tls due to inexistance of certs
+	// // ---- TLS options
+	// srvTLSOpt, err := serverTLSCreds()
+	// if err != nil {
+	// 	panic(err)
+	// }
 	//fmt.Println("temporarily while comment passing it to gprc opts ", srvTLSOpt)
 
 	// ---- gRPC health
@@ -214,7 +215,8 @@ func main() {
 
 	// ---- gRPC server + interceptors (meta → ctx, request-logger, metrics)
 	s := grpc.NewServer(
-		srvTLSOpt,
+		// Yan we disable tls comminication due to unexistanse of tls certs
+		//srvTLSOpt,
 		grpc.StatsHandler(otelgrpc.NewServerHandler()), // ← создаёт серверные спаны для всех RPC
 		grpc.ChainUnaryInterceptor(
 			grpcx.UnaryServerMetaInterceptor,

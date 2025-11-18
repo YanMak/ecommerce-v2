@@ -1,0 +1,10 @@
+BEGIN;
+DROP TABLE IF EXISTS certificate_documents;
+DROP INDEX IF EXISTS certificates_last_activity_time_idx;
+DROP INDEX IF EXISTS certificates_updated_time_idx;
+DROP INDEX IF EXISTS certificates_assigned_by_id_idx;
+DROP INDEX IF EXISTS certificates_company_id_idx;
+DROP INDEX IF EXISTS certificates_uf_number_idx;
+DROP INDEX IF EXISTS certificates_uf_uuid_uq;
+DROP TABLE IF EXISTS certificates;
+COMMIT;
